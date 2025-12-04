@@ -61,11 +61,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function AuthPage({ onShowSetup, showSetup }: { onShowSetup: () => void; showSetup: boolean }) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,17 +95,57 @@ function AuthPage({ onShowSetup, showSetup }: { onShowSetup: () => void; showSet
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await resetPassword(email);
+      toast.success('Password reset email sent! Check your inbox.');
+      setShowForgotPassword(false);
+      setEmail('');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">CPTS Training CRM</CardTitle>
           <CardDescription>
-            {showSetup ? 'Create your admin account' : 'Sign in to your account'}
+            {showForgotPassword ? 'Reset your password' : showSetup ? 'Create your admin account' : 'Sign in to your account'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!showSetup ? (
+          {showForgotPassword ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="Enter your email address"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Sending...' : 'Send Reset Link'}
+              </Button>
+              <Button
+                type="button"
+                variant="link"
+                className="w-full"
+                onClick={() => setShowForgotPassword(false)}
+              >
+                Back to sign in
+              </Button>
+            </form>
+          ) : !showSetup ? (
             <form onSubmit={handleSignIn} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -129,14 +170,24 @@ function AuthPage({ onShowSetup, showSetup }: { onShowSetup: () => void; showSet
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Signing in...' : 'Sign In'}
               </Button>
-              <Button
-                type="button"
-                variant="link"
-                className="w-full"
-                onClick={onShowSetup}
-              >
-                First time? Create admin account
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  variant="link"
+                  className="w-full"
+                  onClick={() => setShowForgotPassword(true)}
+                >
+                  Forgot password?
+                </Button>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="w-full"
+                  onClick={onShowSetup}
+                >
+                  First time? Create admin account
+                </Button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleSignUp} className="space-y-4">
