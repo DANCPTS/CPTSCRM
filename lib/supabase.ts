@@ -1,11 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL_CRM;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY_CRM;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
-    'Missing Supabase environment variables. Please ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in .env.local and restart the dev server.'
+    'Missing Supabase environment variables. Please ensure NEXT_PUBLIC_SUPABASE_URL_CRM and NEXT_PUBLIC_SUPABASE_ANON_KEY_CRM are set in .env and restart the dev server.'
   );
 }
 

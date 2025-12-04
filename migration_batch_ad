@@ -1,0 +1,1000 @@
+  2. Notes
+    - Column is optional (nullable) since not all leads may have companies
+    - Foreign key constraint ensures data integrity
+*/
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'company_id'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN company_id uuid REFERENCES companies(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+
+-- ============================================
+-- Migration: 20251103125749_enable_realtime_for_leads.sql
+-- ============================================
+
+/*
+  # Enable real-time for leads table
+
+  1. Changes
+    - Enable real-time replication for the leads table
+    - This allows the frontend to receive live updates when leads are updated
+
+  2. Purpose
+    - When a booking form is signed and the lead status changes to 'won'
+    - The leads page will receive the update in real-time and trigger celebration animation
+*/
+
+-- Enable real-time for leads table
+ALTER PUBLICATION supabase_realtime ADD TABLE leads;
+
+
+-- ============================================
+-- Migration: 20251103150123_auto_create_candidates_from_booking_forms.sql
+-- ============================================
+
+/*
+  # Auto-create candidates from booking forms
+
+  1. Changes
+    - Create a trigger function that automatically creates candidate profiles
+    - When a booking form is signed, parse the delegate names and create candidates
+    - Link candidates to the course through candidate_courses table
+
+  2. Behavior
+    - Triggers when booking_form status changes to 'signed'
+    - Parses delegate_names from form_data (each line is one candidate)
+    - Creates a candidate profile for each delegate
+    - Uses the contact information from the booking form
+    - Links candidates to the course specified in the booking
+
+  3. Notes
+    - Skips candidates that already exist (based on name match)
+    - Sets created_by to the first admin user found
+    - Status is set to 'active' by default
+*/
+
+CREATE OR REPLACE FUNCTION auto_create_candidates_from_booking()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_delegate_names text;
+  v_delegate_name text;
+  v_first_name text;
+  v_last_name text;
+  v_contact_email text;
+  v_contact_phone text;
+  v_course_name text;
+  v_course_id uuid;
+  v_candidate_id uuid;
+  v_admin_user_id uuid;
+  v_delegate_array text[];
+  v_name_parts text[];
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the first admin user to use as created_by
+    SELECT id INTO v_admin_user_id FROM users WHERE role = 'admin' LIMIT 1;
+    
+    IF v_admin_user_id IS NULL THEN
+      RAISE WARNING 'No admin user found, skipping candidate creation';
+      RETURN NEW;
+    END IF;
+    
+    -- Extract delegate names from form_data
+    v_delegate_names := NEW.form_data->>'delegate_names';
+    v_contact_email := NEW.form_data->>'contact_email';
+    v_contact_phone := NEW.form_data->>'contact_phone';
+    v_course_name := NEW.form_data->>'course_name';
+    
+    -- Find the course_id based on course name
+    IF v_course_name IS NOT NULL THEN
+      SELECT id INTO v_course_id FROM courses WHERE name = v_course_name LIMIT 1;
+    END IF;
+    
+    IF v_delegate_names IS NOT NULL AND v_delegate_names != '' THEN
+      -- Split delegate names by newline
+      v_delegate_array := string_to_array(v_delegate_names, E'\n');
+      
+      -- Process each delegate
+      FOREACH v_delegate_name IN ARRAY v_delegate_array
+      LOOP
+        -- Trim whitespace
+        v_delegate_name := trim(v_delegate_name);
+        
+        -- Skip empty lines
+        IF v_delegate_name = '' THEN
+          CONTINUE;
+        END IF;
+        
+        -- Parse name into first and last name
+        v_name_parts := string_to_array(v_delegate_name, ' ');
+        
+        IF array_length(v_name_parts, 1) >= 2 THEN
+          v_first_name := v_name_parts[1];
+          v_last_name := array_to_string(v_name_parts[2:array_length(v_name_parts, 1)], ' ');
+        ELSE
+          v_first_name := v_delegate_name;
+          v_last_name := '';
+        END IF;
+        
+        -- Check if candidate already exists
+        SELECT id INTO v_candidate_id 
+        FROM candidates 
+        WHERE lower(first_name) = lower(v_first_name) 
+          AND lower(last_name) = lower(v_last_name)
+        LIMIT 1;
+        
+        -- Create candidate if doesn't exist
+        IF v_candidate_id IS NULL THEN
+          INSERT INTO candidates (
+            first_name,
+            last_name,
+            email,
+            phone,
+            status,
+            created_by
+          ) VALUES (
+            v_first_name,
+            v_last_name,
+            v_contact_email,
+            v_contact_phone,
+            'active',
+            v_admin_user_id
+          )
+          RETURNING id INTO v_candidate_id;
+          
+          RAISE NOTICE 'Created candidate: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        ELSE
+          RAISE NOTICE 'Candidate already exists: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        END IF;
+        
+        -- Link candidate to course if course was found
+        IF v_candidate_id IS NOT NULL AND v_course_id IS NOT NULL THEN
+          -- Check if enrollment already exists
+          IF NOT EXISTS (
+            SELECT 1 FROM candidate_courses 
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+          ) THEN
+            INSERT INTO candidate_courses (
+              candidate_id,
+              course_id,
+              enrollment_date,
+              status,
+              created_by
+            ) VALUES (
+              v_candidate_id,
+              v_course_id,
+              CURRENT_DATE,
+              'enrolled',
+              v_admin_user_id
+            );
+            
+            RAISE NOTICE 'Enrolled candidate % in course %', v_candidate_id, v_course_id;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing trigger if exists
+DROP TRIGGER IF EXISTS trigger_auto_create_candidates ON booking_forms;
+
+-- Create trigger
+CREATE TRIGGER trigger_auto_create_candidates
+  AFTER INSERT OR UPDATE ON booking_forms
+  FOR EACH ROW
+  EXECUTE FUNCTION auto_create_candidates_from_booking();
+
+
+-- ============================================
+-- Migration: 20251103150436_fix_auto_create_candidates_course_lookup.sql
+-- ============================================
+
+/*
+  # Fix auto-create candidates function
+
+  1. Changes
+    - Fix course lookup to use 'title' instead of 'name'
+    - The courses table uses 'title' as the column name for course names
+
+  2. Notes
+    - This fixes the trigger function to correctly find courses
+*/
+
+CREATE OR REPLACE FUNCTION auto_create_candidates_from_booking()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_delegate_names text;
+  v_delegate_name text;
+  v_first_name text;
+  v_last_name text;
+  v_contact_email text;
+  v_contact_phone text;
+  v_course_name text;
+  v_course_id uuid;
+  v_candidate_id uuid;
+  v_admin_user_id uuid;
+  v_delegate_array text[];
+  v_name_parts text[];
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the first admin user to use as created_by
+    SELECT id INTO v_admin_user_id FROM users WHERE role = 'admin' LIMIT 1;
+    
+    IF v_admin_user_id IS NULL THEN
+      RAISE WARNING 'No admin user found, skipping candidate creation';
+      RETURN NEW;
+    END IF;
+    
+    -- Extract delegate names from form_data
+    v_delegate_names := NEW.form_data->>'delegate_names';
+    v_contact_email := NEW.form_data->>'contact_email';
+    v_contact_phone := NEW.form_data->>'contact_phone';
+    v_course_name := NEW.form_data->>'course_name';
+    
+    -- Find the course_id based on course title (using LIKE for partial matching)
+    IF v_course_name IS NOT NULL THEN
+      SELECT id INTO v_course_id FROM courses WHERE title ILIKE '%' || v_course_name || '%' LIMIT 1;
+      
+      -- If no match, try exact match
+      IF v_course_id IS NULL THEN
+        SELECT id INTO v_course_id FROM courses WHERE title = v_course_name LIMIT 1;
+      END IF;
+    END IF;
+    
+    IF v_delegate_names IS NOT NULL AND v_delegate_names != '' THEN
+      -- Split delegate names by newline
+      v_delegate_array := string_to_array(v_delegate_names, E'\n');
+      
+      -- Process each delegate
+      FOREACH v_delegate_name IN ARRAY v_delegate_array
+      LOOP
+        -- Trim whitespace
+        v_delegate_name := trim(v_delegate_name);
+        
+        -- Skip empty lines
+        IF v_delegate_name = '' THEN
+          CONTINUE;
+        END IF;
+        
+        -- Parse name into first and last name
+        v_name_parts := string_to_array(v_delegate_name, ' ');
+        
+        IF array_length(v_name_parts, 1) >= 2 THEN
+          v_first_name := v_name_parts[1];
+          v_last_name := array_to_string(v_name_parts[2:array_length(v_name_parts, 1)], ' ');
+        ELSE
+          v_first_name := v_delegate_name;
+          v_last_name := '';
+        END IF;
+        
+        -- Check if candidate already exists
+        SELECT id INTO v_candidate_id 
+        FROM candidates 
+        WHERE lower(first_name) = lower(v_first_name) 
+          AND lower(last_name) = lower(v_last_name)
+        LIMIT 1;
+        
+        -- Create candidate if doesn't exist
+        IF v_candidate_id IS NULL THEN
+          INSERT INTO candidates (
+            first_name,
+            last_name,
+            email,
+            phone,
+            status,
+            created_by
+          ) VALUES (
+            v_first_name,
+            v_last_name,
+            v_contact_email,
+            v_contact_phone,
+            'active',
+            v_admin_user_id
+          )
+          RETURNING id INTO v_candidate_id;
+          
+          RAISE NOTICE 'Created candidate: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        ELSE
+          RAISE NOTICE 'Candidate already exists: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        END IF;
+        
+        -- Link candidate to course if course was found
+        IF v_candidate_id IS NOT NULL AND v_course_id IS NOT NULL THEN
+          -- Check if enrollment already exists
+          IF NOT EXISTS (
+            SELECT 1 FROM candidate_courses 
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+          ) THEN
+            INSERT INTO candidate_courses (
+              candidate_id,
+              course_id,
+              enrollment_date,
+              status,
+              created_by
+            ) VALUES (
+              v_candidate_id,
+              v_course_id,
+              CURRENT_DATE,
+              'enrolled',
+              v_admin_user_id
+            );
+            
+            RAISE NOTICE 'Enrolled candidate % in course %', v_candidate_id, v_course_id;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ============================================
+-- Migration: 20251103150819_create_candidate_files_storage.sql
+-- ============================================
+
+/*
+  # Create storage bucket for candidate files
+
+  1. New Storage Bucket
+    - `candidate-files` - Private bucket for storing candidate documents
+    - Files are organized by candidate_id
+
+  2. Security
+    - RLS policies for authenticated users to upload, view, and delete files
+    - Files are private by default
+    - Only authenticated users can access files
+*/
+
+-- Create the storage bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('candidate-files', 'candidate-files', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow authenticated users to upload files
+CREATE POLICY "Authenticated users can upload candidate files"
+ON storage.objects
+FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'candidate-files');
+
+-- Allow authenticated users to view candidate files
+CREATE POLICY "Authenticated users can view candidate files"
+ON storage.objects
+FOR SELECT
+TO authenticated
+USING (bucket_id = 'candidate-files');
+
+-- Allow authenticated users to delete candidate files
+CREATE POLICY "Authenticated users can delete candidate files"
+ON storage.objects
+FOR DELETE
+TO authenticated
+USING (bucket_id = 'candidate-files');
+
+-- Allow authenticated users to update candidate files
+CREATE POLICY "Authenticated users can update candidate files"
+ON storage.objects
+FOR UPDATE
+TO authenticated
+USING (bucket_id = 'candidate-files')
+WITH CHECK (bucket_id = 'candidate-files');
+
+
+-- ============================================
+-- Migration: 20251103154833_add_course_run_to_candidate_courses.sql
+-- ============================================
+
+/*
+  # Add course run reference to candidate courses
+
+  1. Changes
+    - Add `course_run_id` column to `candidate_courses` table
+    - This links candidates to specific course run dates
+    - Makes the foreign key nullable since existing records don't have this
+
+  2. Notes
+    - Existing records will have NULL course_run_id
+    - Future records should populate this field
+*/
+
+-- Add course_run_id column to candidate_courses
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'candidate_courses' AND column_name = 'course_run_id'
+  ) THEN
+    ALTER TABLE candidate_courses 
+    ADD COLUMN course_run_id uuid REFERENCES course_runs(id);
+  END IF;
+END $$;
+
+
+-- ============================================
+-- Migration: 20251103155226_update_auto_create_candidates_with_course_run.sql
+-- ============================================
+
+/*
+  # Update auto-create candidates to include course_run_id
+
+  1. Changes
+    - Update the trigger function to find and set course_run_id
+    - Look up the course run based on the course_id from the lead's booking
+    - Use the most recent upcoming course run if multiple exist
+
+  2. Behavior
+    - Finds the booking associated with the lead
+    - Gets the course_run_id from the booking
+    - Sets it in the candidate_courses record
+*/
+
+CREATE OR REPLACE FUNCTION auto_create_candidates_from_booking()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_delegate_names text;
+  v_delegate_name text;
+  v_first_name text;
+  v_last_name text;
+  v_contact_email text;
+  v_contact_phone text;
+  v_course_name text;
+  v_course_id uuid;
+  v_course_run_id uuid;
+  v_candidate_id uuid;
+  v_admin_user_id uuid;
+  v_delegate_array text[];
+  v_name_parts text[];
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the first admin user to use as created_by
+    SELECT id INTO v_admin_user_id FROM users WHERE role = 'admin' LIMIT 1;
+    
+    IF v_admin_user_id IS NULL THEN
+      RAISE WARNING 'No admin user found, skipping candidate creation';
+      RETURN NEW;
+    END IF;
+    
+    -- Extract delegate names from form_data
+    v_delegate_names := NEW.form_data->>'delegate_names';
+    v_contact_email := NEW.form_data->>'contact_email';
+    v_contact_phone := NEW.form_data->>'contact_phone';
+    v_course_name := NEW.form_data->>'course_name';
+    
+    -- Find the course_id based on course name (try matching by title)
+    IF v_course_name IS NOT NULL THEN
+      SELECT id INTO v_course_id FROM courses WHERE title ILIKE '%' || v_course_name || '%' LIMIT 1;
+    END IF;
+    
+    -- Try to find the course_run_id from the lead's booking
+    IF NEW.lead_id IS NOT NULL THEN
+      SELECT b.course_run_id INTO v_course_run_id
+      FROM bookings b
+      WHERE b.company_id IN (SELECT company_id FROM leads WHERE id = NEW.lead_id)
+        AND b.course_run_id IS NOT NULL
+      ORDER BY b.created_at DESC
+      LIMIT 1;
+    END IF;
+    
+    -- If no course_run found from booking, try to find an upcoming course run for the course
+    IF v_course_run_id IS NULL AND v_course_id IS NOT NULL THEN
+      SELECT id INTO v_course_run_id
+      FROM course_runs
+      WHERE course_id = v_course_id
+        AND start_date >= CURRENT_DATE
+      ORDER BY start_date ASC
+      LIMIT 1;
+    END IF;
+    
+    IF v_delegate_names IS NOT NULL AND v_delegate_names != '' THEN
+      -- Split delegate names by newline
+      v_delegate_array := string_to_array(v_delegate_names, E'\n');
+      
+      -- Process each delegate
+      FOREACH v_delegate_name IN ARRAY v_delegate_array
+      LOOP
+        -- Trim whitespace
+        v_delegate_name := trim(v_delegate_name);
+        
+        -- Skip empty lines
+        IF v_delegate_name = '' THEN
+          CONTINUE;
+        END IF;
+        
+        -- Parse name into first and last name
+        v_name_parts := string_to_array(v_delegate_name, ' ');
+        
+        IF array_length(v_name_parts, 1) >= 2 THEN
+          v_first_name := v_name_parts[1];
+          v_last_name := array_to_string(v_name_parts[2:array_length(v_name_parts, 1)], ' ');
+        ELSE
+          v_first_name := v_delegate_name;
+          v_last_name := '';
+        END IF;
+        
+        -- Check if candidate already exists
+        SELECT id INTO v_candidate_id 
+        FROM candidates 
+        WHERE lower(first_name) = lower(v_first_name) 
+          AND lower(last_name) = lower(v_last_name)
+        LIMIT 1;
+        
+        -- Create candidate if doesn't exist
+        IF v_candidate_id IS NULL THEN
+          INSERT INTO candidates (
+            first_name,
+            last_name,
+            email,
+            phone,
+            status,
+            created_by
+          ) VALUES (
+            v_first_name,
+            v_last_name,
+            v_contact_email,
+            v_contact_phone,
+            'active',
+            v_admin_user_id
+          )
+          RETURNING id INTO v_candidate_id;
+          
+          RAISE NOTICE 'Created candidate: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        ELSE
+          RAISE NOTICE 'Candidate already exists: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        END IF;
+        
+        -- Link candidate to course if course was found
+        IF v_candidate_id IS NOT NULL AND v_course_id IS NOT NULL THEN
+          -- Check if enrollment already exists
+          IF NOT EXISTS (
+            SELECT 1 FROM candidate_courses 
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+          ) THEN
+            INSERT INTO candidate_courses (
+              candidate_id,
+              course_id,
+              course_run_id,
+              enrollment_date,
+              status,
+              created_by
+            ) VALUES (
+              v_candidate_id,
+              v_course_id,
+              v_course_run_id,
+              CURRENT_DATE,
+              'enrolled',
+              v_admin_user_id
+            );
+            
+            RAISE NOTICE 'Enrolled candidate % in course % (run: %)', v_candidate_id, v_course_id, v_course_run_id;
+          ELSE
+            -- Update existing enrollment with course_run_id if it's NULL
+            UPDATE candidate_courses
+            SET course_run_id = v_course_run_id
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+              AND course_run_id IS NULL;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ============================================
+-- Migration: 20251103160000_fix_auto_create_candidates_duplicate_email.sql
+-- ============================================
+
+/*
+  # Fix auto-create candidates to handle duplicate emails
+
+  1. Changes
+    - Update the trigger function to handle duplicate emails gracefully
+    - Check for existing candidates by email first before creating new ones
+    - Allow multiple candidates with the same email (contact person's email)
+    - Remove the unique constraint on candidates.email since delegates can share contact emails
+
+  2. Behavior
+    - If a candidate with the same name exists, reuse that candidate
+    - If a candidate doesn't exist, create new one even if email is duplicated
+    - This allows multiple delegates from the same company to share a contact email
+*/
+
+-- First, drop the unique constraint on email
+ALTER TABLE candidates DROP CONSTRAINT IF EXISTS candidates_email_key;
+
+-- Update the trigger function to handle duplicate emails
+CREATE OR REPLACE FUNCTION auto_create_candidates_from_booking()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_delegate_names text;
+  v_delegate_name text;
+  v_first_name text;
+  v_last_name text;
+  v_contact_email text;
+  v_contact_phone text;
+  v_course_name text;
+  v_course_id uuid;
+  v_course_run_id uuid;
+  v_candidate_id uuid;
+  v_admin_user_id uuid;
+  v_delegate_array text[];
+  v_name_parts text[];
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the first admin user to use as created_by
+    SELECT id INTO v_admin_user_id FROM users WHERE role = 'admin' LIMIT 1;
+    
+    IF v_admin_user_id IS NULL THEN
+      RAISE WARNING 'No admin user found, skipping candidate creation';
+      RETURN NEW;
+    END IF;
+    
+    -- Extract delegate names from form_data
+    v_delegate_names := NEW.form_data->>'delegate_names';
+    v_contact_email := NEW.form_data->>'contact_email';
+    v_contact_phone := NEW.form_data->>'contact_phone';
+    v_course_name := NEW.form_data->>'course_name';
+    
+    -- Find the course_id based on course name (try matching by title)
+    IF v_course_name IS NOT NULL THEN
+      SELECT id INTO v_course_id FROM courses WHERE title ILIKE '%' || v_course_name || '%' LIMIT 1;
+    END IF;
+    
+    -- Try to find the course_run_id from the lead's booking
+    IF NEW.lead_id IS NOT NULL THEN
+      SELECT b.course_run_id INTO v_course_run_id
+      FROM bookings b
+      WHERE b.company_id IN (SELECT company_id FROM leads WHERE id = NEW.lead_id)
+        AND b.course_run_id IS NOT NULL
+      ORDER BY b.created_at DESC
+      LIMIT 1;
+    END IF;
+    
+    -- If no course_run found from booking, try to find an upcoming course run for the course
+    IF v_course_run_id IS NULL AND v_course_id IS NOT NULL THEN
+      SELECT id INTO v_course_run_id
+      FROM course_runs
+      WHERE course_id = v_course_id
+        AND start_date >= CURRENT_DATE
+      ORDER BY start_date ASC
+      LIMIT 1;
+    END IF;
+    
+    IF v_delegate_names IS NOT NULL AND v_delegate_names != '' THEN
+      -- Split delegate names by newline
+      v_delegate_array := string_to_array(v_delegate_names, E'\n');
+      
+      -- Process each delegate
+      FOREACH v_delegate_name IN ARRAY v_delegate_array
+      LOOP
+        -- Trim whitespace
+        v_delegate_name := trim(v_delegate_name);
+        
+        -- Skip empty lines
+        IF v_delegate_name = '' THEN
+          CONTINUE;
+        END IF;
+        
+        -- Parse name into first and last name
+        v_name_parts := string_to_array(v_delegate_name, ' ');
+        
+        IF array_length(v_name_parts, 1) >= 2 THEN
+          v_first_name := v_name_parts[1];
+          v_last_name := array_to_string(v_name_parts[2:array_length(v_name_parts, 1)], ' ');
+        ELSE
+          v_first_name := v_delegate_name;
+          v_last_name := '';
+        END IF;
+        
+        -- Check if candidate already exists by name (not email, since emails can be shared)
+        SELECT id INTO v_candidate_id 
+        FROM candidates 
+        WHERE lower(first_name) = lower(v_first_name) 
+          AND lower(last_name) = lower(v_last_name)
+        LIMIT 1;
+        
+        -- Create candidate if doesn't exist
+        IF v_candidate_id IS NULL THEN
+          INSERT INTO candidates (
+            first_name,
+            last_name,
+            email,
+            phone,
+            status,
+            created_by
+          ) VALUES (
+            v_first_name,
+            v_last_name,
+            v_contact_email,
+            v_contact_phone,
+            'active',
+            v_admin_user_id
+          )
+          RETURNING id INTO v_candidate_id;
+          
+          RAISE NOTICE 'Created candidate: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        ELSE
+          RAISE NOTICE 'Candidate already exists: % % (ID: %)', v_first_name, v_last_name, v_candidate_id;
+        END IF;
+        
+        -- Link candidate to course if course was found
+        IF v_candidate_id IS NOT NULL AND v_course_id IS NOT NULL THEN
+          -- Check if enrollment already exists
+          IF NOT EXISTS (
+            SELECT 1 FROM candidate_courses 
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+          ) THEN
+            INSERT INTO candidate_courses (
+              candidate_id,
+              course_id,
+              course_run_id,
+              enrollment_date,
+              status,
+              created_by
+            ) VALUES (
+              v_candidate_id,
+              v_course_id,
+              v_course_run_id,
+              CURRENT_DATE,
+              'enrolled',
+              v_admin_user_id
+            );
+            
+            RAISE NOTICE 'Enrolled candidate % in course % (run: %)', v_candidate_id, v_course_id, v_course_run_id;
+          ELSE
+            -- Update existing enrollment with course_run_id if it's NULL
+            UPDATE candidate_courses
+            SET course_run_id = v_course_run_id
+            WHERE candidate_id = v_candidate_id 
+              AND course_id = v_course_id
+              AND course_run_id IS NULL;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ============================================
+-- Migration: 20251103161243_add_invoice_reminder_on_booking_signed.sql
+-- ============================================
+
+/*
+  # Add invoice reminder when booking form is signed
+
+  1. Changes
+    - Create a trigger that adds a notification to remind sending an invoice
+    - Triggers when booking_form status changes to 'signed'
+    - Notification is assigned to the lead owner or first admin
+
+  2. Behavior
+    - Creates a notification with type 'invoice_reminder'
+    - Links to the lead that needs an invoice
+    - Includes lead and company information in the notification
+*/
+
+CREATE OR REPLACE FUNCTION create_invoice_reminder_on_booking_signed()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_assigned_user_id uuid;
+  v_lead_name text;
+  v_company_name text;
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the lead information and assigned user
+    SELECT l.assigned_to, l.name, l.company_name
+    INTO v_assigned_user_id, v_lead_name, v_company_name
+    FROM leads l
+    WHERE l.id = NEW.lead_id;
+    
+    -- If no assigned user, get first admin
+    IF v_assigned_user_id IS NULL THEN
+      SELECT id INTO v_assigned_user_id 
+      FROM users 
+      WHERE role = 'admin' 
+      LIMIT 1;
+    END IF;
+    
+    -- Create the invoice reminder notification
+    IF v_assigned_user_id IS NOT NULL THEN
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        message,
+        related_type,
+        related_id,
+        created_at
+      ) VALUES (
+        v_assigned_user_id,
+        'invoice_reminder',
+        'Send Invoice',
+        CASE 
+          WHEN v_company_name IS NOT NULL THEN 
+            'Booking form signed by ' || v_lead_name || ' (' || v_company_name || '). Remember to send an invoice.'
+          ELSE 
+            'Booking form signed by ' || v_lead_name || '. Remember to send an invoice.'
+        END,
+        'lead',
+        NEW.lead_id,
+        now()
+      );
+      
+      RAISE NOTICE 'Created invoice reminder for user % for lead %', v_assigned_user_id, NEW.lead_id;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing trigger if exists
+DROP TRIGGER IF EXISTS trigger_create_invoice_reminder ON booking_forms;
+
+-- Create trigger
+CREATE TRIGGER trigger_create_invoice_reminder
+  AFTER INSERT OR UPDATE ON booking_forms
+  FOR EACH ROW
+  EXECUTE FUNCTION create_invoice_reminder_on_booking_signed();
+
+
+-- ============================================
+-- Migration: 20251103161305_fix_invoice_reminder_column_names.sql
+-- ============================================
+
+/*
+  # Fix invoice reminder to use correct column names
+
+  1. Changes
+    - Update trigger to use reference_id and reference_type instead of related_id and related_type
+*/
+
+CREATE OR REPLACE FUNCTION create_invoice_reminder_on_booking_signed()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_assigned_user_id uuid;
+  v_lead_name text;
+  v_company_name text;
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get the lead information and assigned user
+    SELECT l.assigned_to, l.name, l.company_name
+    INTO v_assigned_user_id, v_lead_name, v_company_name
+    FROM leads l
+    WHERE l.id = NEW.lead_id;
+    
+    -- If no assigned user, get first admin
+    IF v_assigned_user_id IS NULL THEN
+      SELECT id INTO v_assigned_user_id 
+      FROM users 
+      WHERE role = 'admin' 
+      LIMIT 1;
+    END IF;
+    
+    -- Create the invoice reminder notification
+    IF v_assigned_user_id IS NOT NULL THEN
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        message,
+        reference_type,
+        reference_id,
+        read,
+        created_at
+      ) VALUES (
+        v_assigned_user_id,
+        'invoice_reminder',
+        'Send Invoice',
+        CASE 
+          WHEN v_company_name IS NOT NULL THEN 
+            'Booking form signed by ' || v_lead_name || ' (' || v_company_name || '). Remember to send an invoice.'
+          ELSE 
+            'Booking form signed by ' || v_lead_name || '. Remember to send an invoice.'
+        END,
+        'lead',
+        NEW.lead_id,
+        false,
+        now()
+      );
+      
+      RAISE NOTICE 'Created invoice reminder for user % for lead %', v_assigned_user_id, NEW.lead_id;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ============================================
+-- Migration: 20251103163909_add_lead_id_to_bookings.sql
+-- ============================================
+
+/*
+  # Add lead_id to bookings table
+
+  1. Changes
+    - Add lead_id column to bookings table as optional foreign key
+    - This allows tracking which lead generated the booking
+    - Enables showing "Invoice" button when candidates are booked
+
+  2. Notes
+    - Column is nullable since existing bookings may not have a lead
+    - Future bookings can link back to the originating lead
+*/
+
+-- Add lead_id column to bookings table
+ALTER TABLE bookings 
+ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES leads(id) ON DELETE SET NULL;
+
+-- Add index for better query performance
+CREATE INDEX IF NOT EXISTS idx_bookings_lead_id ON bookings(lead_id);
+
+-- Update existing bookings to link to leads where possible (match by company)
+UPDATE bookings b
+SET lead_id = (
+  SELECT l.id 
+  FROM leads l
+  WHERE l.company_id = b.company_id
+    AND l.status = 'won'
+  ORDER BY l.updated_at DESC
+  LIMIT 1
+)
+WHERE b.lead_id IS NULL
+  AND b.company_id IS NOT NULL;
+
+
+-- ============================================
+-- Migration: 20251103164253_add_invoice_fields_to_bookings.sql
+-- ============================================
+
+/*
+  # Add invoice fields to bookings table
+
+  1. Changes
+    - Add invoice_sent boolean field to track if invoice has been sent
+    - Add invoice_number text field to store the invoice number
+    - Add joining_instructions_sent boolean to track if joining instructions have been sent
+
+  2. Notes
+    - All fields are nullable for backwards compatibility
+    - Default values set to false for boolean fields
+*/
+

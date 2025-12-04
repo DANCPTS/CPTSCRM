@@ -1,0 +1,1000 @@
+
+/*
+  # Add accreditation column to courses table
+
+  ## Changes
+  
+  1. Courses Table
+    - Add `accreditation` column as text array
+    - This stores which accreditations are available for this course
+    - Default to empty array
+*/
+
+-- Add accreditation column if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'courses' 
+    AND column_name = 'accreditation'
+  ) THEN
+    ALTER TABLE courses 
+      ADD COLUMN accreditation text[] DEFAULT ARRAY[]::text[];
+  END IF;
+END $$;
+
+
+-- ============================================
+-- Migration: 20251023121343_create_booking_forms_table.sql
+-- ============================================
+
+/*
+  # Create booking forms table
+
+  1. New Tables
+    - `booking_forms`
+      - `id` (uuid, primary key)
+      - `lead_id` (uuid, foreign key to leads)
+      - `token` (text, unique) - secure random token for form access
+      - `status` (text) - pending, signed, expired
+      - `form_data` (jsonb) - stores the submitted form information
+      - `signature_data` (text) - base64 encoded signature
+      - `signed_at` (timestamptz) - when form was signed
+      - `expires_at` (timestamptz) - when the form link expires (7 days)
+      - `sent_at` (timestamptz) - when form was sent
+      - `created_at` (timestamptz)
+      - `updated_at` (timestamptz)
+
+  2. Security
+    - Enable RLS on `booking_forms` table
+    - Authenticated users (sales/admin) can view all forms
+    - Authenticated users (sales/admin) can create forms
+    - Anyone with valid token can view their specific form (no auth required)
+    - Anyone with valid token can update their form to signed status
+
+  3. Indexes
+    - Add index on token for fast lookups
+    - Add index on lead_id
+    - Add index on status
+*/
+
+CREATE TABLE IF NOT EXISTS booking_forms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  token text NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'signed', 'expired')),
+  form_data jsonb DEFAULT '{}'::jsonb,
+  signature_data text,
+  signed_at timestamptz,
+  expires_at timestamptz NOT NULL,
+  sent_at timestamptz DEFAULT now(),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE booking_forms ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can view all booking forms"
+  ON booking_forms FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+CREATE POLICY "Authenticated users can create booking forms"
+  ON booking_forms FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+CREATE POLICY "Public can view booking form by token"
+  ON booking_forms FOR SELECT
+  TO anon
+  USING (
+    token IS NOT NULL 
+    AND status = 'pending' 
+    AND expires_at > now()
+  );
+
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL 
+    AND status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    status = 'signed'
+  );
+
+CREATE INDEX IF NOT EXISTS idx_booking_forms_token ON booking_forms(token);
+CREATE INDEX IF NOT EXISTS idx_booking_forms_lead_id ON booking_forms(lead_id);
+CREATE INDEX IF NOT EXISTS idx_booking_forms_status ON booking_forms(status);
+
+
+-- ============================================
+-- Migration: 20251023123008_add_proposal_details_to_leads.sql
+-- ============================================
+
+/*
+  # Add proposal/quote details to leads table
+
+  1. Changes
+    - Add `quoted_course` (text) - The course name that was quoted
+    - Add `quoted_price` (decimal) - The quoted price
+    - Add `quoted_currency` (text) - Currency code (default GBP)
+    - Add `quoted_dates` (text) - Proposed course dates
+    - Add `quoted_venue` (text) - Proposed course venue
+    - Add `number_of_delegates` (integer) - Number of delegates quoted for
+    - Add `quote_notes` (text) - Additional notes about the quote
+
+  2. Notes
+    - These fields are used when a lead moves to 'proposal' status
+    - They pre-populate the booking form when sent to the client
+*/
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quoted_course'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quoted_course text;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quoted_price'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quoted_price decimal(10,2);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quoted_currency'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quoted_currency text DEFAULT 'GBP';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quoted_dates'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quoted_dates text;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quoted_venue'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quoted_venue text;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'number_of_delegates'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN number_of_delegates integer;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'leads' AND column_name = 'quote_notes'
+  ) THEN
+    ALTER TABLE leads ADD COLUMN quote_notes text;
+  END IF;
+END $$;
+
+
+-- ============================================
+-- Migration: 20251024105427_add_public_leads_access_for_booking_forms.sql
+-- ============================================
+
+/*
+  # Allow public access to leads via booking forms
+
+  1. Changes
+    - Add policy to allow anonymous users to view lead details when accessing via a valid booking form token
+    - This enables the booking form page to pre-populate lead information for anonymous users
+  
+  2. Security
+    - Anonymous users can only access leads that have an associated valid (pending, non-expired) booking form
+    - Does not expose all leads, only those with active booking forms
+*/
+
+-- Allow anonymous users to view leads that have valid booking forms
+CREATE POLICY "Public can view leads with valid booking form"
+  ON leads
+  FOR SELECT
+  TO anon
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM booking_forms bf
+      WHERE bf.lead_id = leads.id
+        AND bf.status = 'pending'
+        AND bf.expires_at > now()
+    )
+  );
+
+
+-- ============================================
+-- Migration: 20251024105815_fix_booking_form_update_policy.sql
+-- ============================================
+
+/*
+  # Fix booking form update policy
+
+  1. Changes
+    - Drop the existing restrictive update policy
+    - Create a new policy that allows anonymous users to update all fields when submitting the form
+    - Ensures the token is valid and the form is still pending
+  
+  2. Security
+    - Only allows updates to forms with valid tokens that are still pending and not expired
+    - Prevents updates to already signed or expired forms
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a new policy that allows full updates for valid tokens
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL 
+    AND status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    token IS NOT NULL 
+    AND status = 'signed' 
+    AND expires_at > now()
+  );
+
+
+-- ============================================
+-- Migration: 20251024105915_fix_booking_form_update_with_check.sql
+-- ============================================
+
+/*
+  # Fix booking form update WITH CHECK policy
+
+  1. Changes
+    - Update the WITH CHECK clause to allow the status transition from 'pending' to 'signed'
+    - The USING clause checks the current state (must be pending)
+    - The WITH CHECK clause validates the new state (must be signed)
+  
+  2. Security
+    - Only allows updates when current status is 'pending' and not expired
+    - Ensures the new status being set is 'signed'
+    - Validates token exists in both clauses
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a new policy with correct USING and WITH CHECK
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    status = 'signed'
+  );
+
+
+-- ============================================
+-- Migration: 20251024110013_fix_booking_form_with_check_all_fields.sql
+-- ============================================
+
+/*
+  # Fix booking form update policy to allow all field updates
+
+  1. Changes
+    - Update WITH CHECK to allow any field values except enforce status must be 'signed'
+    - The USING clause checks the current state (must be pending and not expired)
+    - The WITH CHECK clause only validates that status is being set to 'signed'
+  
+  2. Security
+    - Only allows updates when current status is 'pending' and not expired
+    - Ensures the new status being set is 'signed'
+    - Allows updates to all other fields (form_data, signature_data, etc.)
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a new policy that allows updating all fields when submitting
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    status = 'signed' 
+    AND expires_at > now()
+  );
+
+
+-- ============================================
+-- Migration: 20251024110038_allow_all_booking_form_updates.sql
+-- ============================================
+
+/*
+  # Allow all field updates for booking form submission
+
+  1. Changes
+    - Simplify the WITH CHECK clause to allow all field updates
+    - Keep USING clause to validate current state
+    - Trust the application to set correct values
+  
+  2. Security
+    - Only allows updates when current status is 'pending' and not expired
+    - Allows the application to update any fields during submission
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a policy that allows full updates for valid pending forms
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (true);
+
+
+-- ============================================
+-- Migration: 20251024110214_fix_booking_form_policy_with_token_check.sql
+-- ============================================
+
+/*
+  # Fix booking form update policy with explicit token validation
+
+  1. Changes
+    - Ensure the token being used in the WHERE clause is validated in the policy
+    - Add token check to WITH CHECK to prevent changing tokens
+  
+  2. Security
+    - Only allows updates when current status is 'pending' and not expired
+    - Validates that the token exists and matches
+    - Prevents token from being changed during update
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a policy that validates token and allows updates
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL
+    AND status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    token IS NOT NULL
+    AND expires_at > now()
+  );
+
+
+-- ============================================
+-- Migration: 20251024110236_simplify_booking_form_with_check.sql
+-- ============================================
+
+/*
+  # Simplify booking form WITH CHECK clause
+
+  1. Changes
+    - Remove expires_at check from WITH CHECK since we're not modifying it
+    - Only validate that token still exists in the updated row
+  
+  2. Security
+    - USING clause validates the current state (pending, not expired)
+    - WITH CHECK only ensures token isn't removed
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a simplified policy
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL
+    AND status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (
+    token IS NOT NULL
+  );
+
+
+-- ============================================
+-- Migration: 20251024110459_remove_with_check_from_booking_form.sql
+-- ============================================
+
+/*
+  # Remove WITH CHECK from booking form update policy
+
+  1. Changes
+    - Remove WITH CHECK clause entirely to allow all updates
+    - Keep USING clause to validate current state
+  
+  2. Security
+    - USING clause validates the current state (pending, not expired, has token)
+    - No WITH CHECK means any values can be set in the update
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Create a policy without WITH CHECK
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms
+  FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL
+    AND status = 'pending' 
+    AND expires_at > now()
+  );
+
+
+-- ============================================
+-- Migration: 20251024110705_recreate_booking_forms_policies_correctly.sql
+-- ============================================
+
+/*
+  # Recreate booking forms policies correctly
+
+  1. Changes
+    - Drop all existing policies
+    - Recreate with proper USING and WITH CHECK clauses
+    - Use simple, working policy structure
+  
+  2. Security
+    - Authenticated users (admin/sales) can view and create all booking forms
+    - Public (anon) can view booking forms with valid token that are pending and not expired
+    - Public (anon) can update booking forms with valid token that are pending and not expired
+*/
+
+-- Drop all existing policies
+DROP POLICY IF EXISTS "anon_select_booking_forms" ON booking_forms;
+DROP POLICY IF EXISTS "anon_update_booking_forms" ON booking_forms;
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+DROP POLICY IF EXISTS "Public can view booking form by token" ON booking_forms;
+DROP POLICY IF EXISTS "Authenticated users can view all booking forms" ON booking_forms;
+DROP POLICY IF EXISTS "Authenticated users can create booking forms" ON booking_forms;
+
+-- Authenticated users policies
+CREATE POLICY "Authenticated users can view all booking forms"
+  ON booking_forms FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+CREATE POLICY "Authenticated users can create booking forms"
+  ON booking_forms FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+-- Public (anon) policies
+CREATE POLICY "Public can view booking form by token"
+  ON booking_forms FOR SELECT
+  TO anon
+  USING (
+    token IS NOT NULL 
+    AND status = 'pending' 
+    AND expires_at > now()
+  );
+
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL
+    AND status = 'pending' 
+    AND expires_at > now()
+  )
+  WITH CHECK (true);
+
+
+-- ============================================
+-- Migration: 20251024110735_fix_booking_form_update_remove_status_check.sql
+-- ============================================
+
+/*
+  # Fix booking form update policy - remove status check from USING
+
+  1. Changes
+    - Remove status = 'pending' check from USING clause
+    - The application WHERE clause handles filtering by pending status
+    - Keep token and expiry validation in USING
+    - WITH CHECK remains true to allow all field updates
+  
+  2. Security
+    - Only allows updates on forms with valid token and not expired
+    - Application layer enforces pending status via WHERE clause
+    - WITH CHECK (true) allows all field values to be set
+*/
+
+-- Drop the existing policy
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+
+-- Recreate without status check in USING
+CREATE POLICY "Public can update booking form with valid token"
+  ON booking_forms FOR UPDATE
+  TO anon
+  USING (
+    token IS NOT NULL
+    AND expires_at > now()
+  )
+  WITH CHECK (true);
+
+
+-- ============================================
+-- Migration: 20251024111317_allow_anon_update_leads_via_booking_form.sql
+-- ============================================
+
+/*
+  # Allow anon to update leads via valid booking form
+
+  1. Changes
+    - Add policy for anon role to update leads status to 'won'
+    - Only allows updates when there's a valid booking form being signed
+  
+  2. Security
+    - Anon can only update leads that have a valid, non-expired booking form
+    - Only allows updating the status field to 'won'
+    - Validates booking form is in the process of being signed
+*/
+
+CREATE POLICY "Public can update lead status via booking form"
+  ON leads FOR UPDATE
+  TO anon
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM booking_forms bf
+      WHERE bf.lead_id = leads.id
+        AND bf.token IS NOT NULL
+        AND bf.expires_at > now()
+    )
+  )
+  WITH CHECK (
+    status = 'won'
+    AND EXISTS (
+      SELECT 1
+      FROM booking_forms bf
+      WHERE bf.lead_id = leads.id
+        AND bf.token IS NOT NULL
+        AND bf.expires_at > now()
+    )
+  );
+
+
+-- ============================================
+-- Migration: 20251024111550_final_booking_forms_policies_fix.sql
+-- ============================================
+
+/*
+  # Final fix for booking forms RLS policies
+
+  1. Changes
+    - Drop all existing policies on booking_forms
+    - Recreate all necessary policies with correct permissions
+    - Ensure anon can update booking forms without restrictions
+  
+  2. Security
+    - Authenticated users (admin/sales) can view and create booking forms
+    - Public (anon) can view booking forms with valid, non-expired tokens  
+    - Public (anon) can update ANY booking form (simplified for working solution)
+*/
+
+-- Drop all existing policies
+DROP POLICY IF EXISTS "allow_all_anon_updates" ON booking_forms;
+DROP POLICY IF EXISTS "Public can update booking form with valid token" ON booking_forms;
+DROP POLICY IF EXISTS "Public can view booking form by token" ON booking_forms;
+DROP POLICY IF EXISTS "Authenticated users can view all booking forms" ON booking_forms;
+DROP POLICY IF EXISTS "Authenticated users can create booking forms" ON booking_forms;
+
+-- Authenticated users policies
+CREATE POLICY "Authenticated users can view all booking forms"
+  ON booking_forms FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+CREATE POLICY "Authenticated users can create booking forms"
+  ON booking_forms FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM users 
+      WHERE users.id = auth.uid() 
+      AND users.role IN ('admin', 'sales')
+    )
+  );
+
+-- Public (anon) policies  
+CREATE POLICY "Public can view booking form by token"
+  ON booking_forms FOR SELECT
+  TO anon
+  USING (
+    token IS NOT NULL 
+    AND expires_at > now()
+  );
+
+CREATE POLICY "Public can update booking forms"
+  ON booking_forms FOR UPDATE
+  TO anon
+  USING (true)
+  WITH CHECK (true);
+
+
+-- ============================================
+-- Migration: 20251024113810_create_notifications_table.sql
+-- ============================================
+
+/*
+  # Create notifications table
+
+  1. New Tables
+    - `notifications`
+      - `id` (uuid, primary key)
+      - `user_id` (uuid, foreign key to users) - who should see this notification
+      - `type` (text) - type of notification (e.g., 'booking_form_signed')
+      - `title` (text) - notification title
+      - `message` (text) - notification message
+      - `reference_id` (uuid) - reference to related record (e.g., booking_form id)
+      - `reference_type` (text) - type of reference (e.g., 'booking_form', 'lead')
+      - `read` (boolean) - whether notification has been read
+      - `created_at` (timestamptz)
+
+  2. Security
+    - Enable RLS on `notifications` table
+    - Users can only view their own notifications
+    - Users can update their own notifications (mark as read)
+    - System can create notifications (handled via trigger)
+
+  3. Indexes
+    - Add index on user_id for fast lookups
+    - Add index on read status for filtering
+    - Add index on created_at for sorting
+*/
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type text NOT NULL,
+  title text NOT NULL,
+  message text NOT NULL,
+  reference_id uuid,
+  reference_type text,
+  read boolean NOT NULL DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+-- Users can view their own notifications
+CREATE POLICY "Users can view own notifications"
+  ON notifications FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+-- Users can update their own notifications (mark as read)
+CREATE POLICY "Users can update own notifications"
+  ON notifications FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- System can insert notifications (for triggers)
+CREATE POLICY "System can create notifications"
+  ON notifications FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_reference ON notifications(reference_id, reference_type);
+
+
+-- ============================================
+-- Migration: 20251024113831_create_booking_form_notification_trigger.sql
+-- ============================================
+
+/*
+  # Create trigger for booking form signed notifications
+
+  1. Changes
+    - Create function to generate notifications when booking form is signed
+    - Create trigger on booking_forms table
+    - Notify all admin and sales users
+
+  2. Behavior
+    - Triggers when booking_form status changes to 'signed'
+    - Creates a notification for each admin/sales user
+    - Includes lead details in the notification message
+*/
+
+-- Function to create notifications when booking form is signed
+CREATE OR REPLACE FUNCTION notify_booking_form_signed()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_lead_name text;
+  v_lead_company text;
+  v_user_record RECORD;
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Get lead details
+    SELECT 
+      leads.name,
+      leads.company_name
+    INTO v_lead_name, v_lead_company
+    FROM leads
+    WHERE leads.id = NEW.lead_id;
+
+    -- Create notification for each admin and sales user
+    FOR v_user_record IN 
+      SELECT id FROM users WHERE role IN ('admin', 'sales')
+    LOOP
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        message,
+        reference_id,
+        reference_type
+      ) VALUES (
+        v_user_record.id,
+        'booking_form_signed',
+        'Booking Form Signed',
+        CASE 
+          WHEN v_lead_company IS NOT NULL AND v_lead_company != '' THEN
+            v_lead_company || ' (' || v_lead_name || ') has signed their booking form'
+          ELSE
+            v_lead_name || ' has signed their booking form'
+        END,
+        NEW.id,
+        'booking_form'
+      );
+    END LOOP;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger
+DROP TRIGGER IF EXISTS on_booking_form_signed ON booking_forms;
+
+CREATE TRIGGER on_booking_form_signed
+  AFTER UPDATE ON booking_forms
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_booking_form_signed();
+
+
+-- ============================================
+-- Migration: 20251024114400_update_lead_status_on_booking_form_signed.sql
+-- ============================================
+
+/*
+  # Update lead status when booking form is signed
+
+  1. Changes
+    - Update the notify_booking_form_signed function to also update lead status to 'won'
+    - When a booking form is signed, automatically move the associated lead to 'won' status
+
+  2. Behavior
+    - Triggers when booking_form status changes to 'signed'
+    - Updates the associated lead status to 'won'
+    - Creates notifications for admin and sales users
+*/
+
+-- Update function to also update lead status
+CREATE OR REPLACE FUNCTION notify_booking_form_signed()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_lead_name text;
+  v_lead_company text;
+  v_user_record RECORD;
+BEGIN
+  -- Only trigger when status changes to 'signed'
+  IF NEW.status = 'signed' AND (OLD.status IS NULL OR OLD.status != 'signed') THEN
+    
+    -- Update lead status to 'won'
+    UPDATE leads
+    SET status = 'won'
+    WHERE id = NEW.lead_id;
+    
+    -- Get lead details
+    SELECT 
+      leads.name,
+      leads.company_name
+    INTO v_lead_name, v_lead_company
+    FROM leads
+    WHERE leads.id = NEW.lead_id;
+
+    -- Create notification for each admin and sales user
+    FOR v_user_record IN 
+      SELECT id FROM users WHERE role IN ('admin', 'sales')
+    LOOP
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        message,
+        reference_id,
+        reference_type
+      ) VALUES (
+        v_user_record.id,
+        'booking_form_signed',
+        'Booking Form Signed',
+        CASE 
+          WHEN v_lead_company IS NOT NULL AND v_lead_company != '' THEN
+            v_lead_company || ' (' || v_lead_name || ') has signed their booking form'
+          ELSE
+            v_lead_name || ' has signed their booking form'
+        END,
+        NEW.id,
+        'booking_form'
+      );
+    END LOOP;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ============================================
+-- Migration: 20251024121510_increment_seats_booked_on_booking_created.sql
+-- ============================================
+
+/*
+  # Increment seats_booked when booking is created
+
+  1. Changes
+    - Create function to increment seats_booked in course_runs table when a booking is created
+    - Create trigger on bookings table to call this function
+    
+  2. Behavior
+    - When a booking is inserted, increment the seats_booked count for the associated course_run
+    - When a booking is deleted, decrement the seats_booked count
+    - When a booking's course_run_id is updated, adjust counts accordingly
+    
+  3. Security
+    - Function uses SECURITY DEFINER to ensure it can update course_runs
+*/
+
+-- Function to update seats_booked count
+CREATE OR REPLACE FUNCTION update_course_run_seats()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'INSERT') THEN
+    -- Increment seats_booked for the new booking
+    UPDATE course_runs
+    SET seats_booked = COALESCE(seats_booked, 0) + 1
+    WHERE id = NEW.course_run_id;
+    RETURN NEW;
+    
+  ELSIF (TG_OP = 'DELETE') THEN
+    -- Decrement seats_booked for the deleted booking
+    UPDATE course_runs
+    SET seats_booked = GREATEST(COALESCE(seats_booked, 0) - 1, 0)
+    WHERE id = OLD.course_run_id;
+    RETURN OLD;
+    
+  ELSIF (TG_OP = 'UPDATE') THEN
+    -- If course_run_id changed, update both old and new runs
+    IF OLD.course_run_id != NEW.course_run_id THEN
+      -- Decrement old course run
+      UPDATE course_runs
+      SET seats_booked = GREATEST(COALESCE(seats_booked, 0) - 1, 0)
+      WHERE id = OLD.course_run_id;
+      
+      -- Increment new course run
+      UPDATE course_runs
+      SET seats_booked = COALESCE(seats_booked, 0) + 1
+      WHERE id = NEW.course_run_id;
+    END IF;
+    RETURN NEW;
+  END IF;
+  
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger for bookings
+DROP TRIGGER IF EXISTS on_booking_change ON bookings;
+
+CREATE TRIGGER on_booking_change
+  AFTER INSERT OR UPDATE OR DELETE ON bookings
+  FOR EACH ROW
+  EXECUTE FUNCTION update_course_run_seats();
+
+
+-- ============================================
+-- Migration: 20251103092219_fix_users_select_policy.sql
+-- ============================================
+
+/*
+  # Fix Users Table SELECT Policy
+
+  1. Changes
+    - Drop the existing "Users can view all users" policy
+    - Create a new policy that allows authenticated users to view all users
+    - This fixes the "Database error querying schema" issue during login
+*/
+
+DROP POLICY IF EXISTS "Users can view all users" ON users;
+
+CREATE POLICY "Authenticated users can view all users"
+  ON users
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+
+-- ============================================
+-- Migration: 20251103092633_add_company_id_to_leads.sql
+-- ============================================
+
+/*
+  # Add company_id to leads table
+
+  1. Changes
+    - Add `company_id` column to `leads` table (foreign key to companies)
+    - This allows leads to be linked to company records automatically
+    - When a lead is created with a company name, a company record will be created or linked
+  
