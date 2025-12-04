@@ -1,0 +1,177 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { AppShell } from '@/components/app-shell';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Plus, X } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { getBookings } from '@/lib/db-helpers';
+import { format, parseISO } from 'date-fns';
+import { BookingDialog } from '@/components/booking-dialog';
+
+export default function BookingsPage() {
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [bookingToCancel, setBookingToCancel] = useState<any>(null);
+
+  useEffect(() => {
+    loadBookings();
+  }, []);
+
+  const loadBookings = async () => {
+    try {
+      const data = await getBookings();
+      setBookings(data);
+    } catch (error) {
+      console.error('Failed to load bookings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const statusColors: Record<string, string> = {
+    reserved: 'bg-yellow-100 text-yellow-800',
+    confirmed: 'bg-blue-100 text-blue-800',
+    completed: 'bg-green-100 text-green-800',
+    cancelled: 'bg-red-100 text-red-800',
+  };
+
+  const handleCancelBooking = (booking: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBookingToCancel(booking);
+    setCancelDialogOpen(true);
+  };
+
+  const confirmCancelBooking = async () => {
+    if (!bookingToCancel) return;
+
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingToCancel.id);
+
+      if (error) throw error;
+
+      toast.success('Booking cancelled successfully');
+      setCancelDialogOpen(false);
+      setBookingToCancel(null);
+      loadBookings();
+    } catch (error: any) {
+      toast.error('Failed to cancel booking');
+      console.error(error);
+    }
+  };
+
+  return (
+    <AppShell>
+      <div className="p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Bookings</h1>
+            <p className="text-slate-600 mt-1">Course bookings and registrations</p>
+          </div>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Booking
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-800"></div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {bookings.map(booking => (
+              <Card key={booking.id} className="hover:shadow-sm transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold mb-1">
+                        {booking.contacts?.first_name} {booking.contacts?.last_name}
+                        {booking.companies && ` - ${booking.companies.name}`}
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        {booking.course_runs?.courses?.title}
+                        {' • '}
+                        {booking.course_runs && format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy')}
+                        {' • '}
+                        £{booking.amount}
+                      </p>
+                      {booking.invoice_no && (
+                        <p className="text-xs text-slate-500 mt-1">Invoice: {booking.invoice_no}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge className={statusColors[booking.status]}>
+                        {booking.status}
+                      </Badge>
+                      {booking.status !== 'cancelled' && booking.status !== 'completed' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => handleCancelBooking(booking, e)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <BookingDialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          loadBookings();
+        }}
+      />
+
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this booking for{' '}
+              <strong>
+                {bookingToCancel?.contacts?.first_name} {bookingToCancel?.contacts?.last_name}
+              </strong>
+              ? This will free up a seat on the course.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Booking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCancelBooking}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Cancel Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AppShell>
+  );
+}
