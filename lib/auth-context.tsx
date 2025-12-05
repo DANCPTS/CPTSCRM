@@ -65,7 +65,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      setUserProfile(data);
+      if (!data) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: existingUsers } = await supabase
+            .from('users')
+            .select('id')
+            .limit(1);
+
+          const isFirstUser = !existingUsers || existingUsers.length === 0;
+
+          const { data: newProfile, error: createError } = await supabase
+            .from('users')
+            .insert({
+              id: user.id,
+              email: user.email!,
+              full_name: user.email!.split('@')[0],
+              role: isFirstUser ? 'admin' : 'sales',
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Failed to create profile:', createError);
+          } else {
+            setUserProfile(newProfile);
+          }
+        }
+      } else {
+        setUserProfile(data);
+      }
     } catch (err) {
       console.error('Failed to load user profile:', err);
     } finally {
