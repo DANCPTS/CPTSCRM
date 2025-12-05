@@ -30,7 +30,7 @@ export default function Home() {
   const loadDashboard = async () => {
     try {
       const [metricsData, tasksData, runsData, leadsData] = await Promise.all([
-        getDashboardMetrics(userProfile?.id),
+        getDashboardMetrics(),
         getTasks(userProfile?.id),
         getCourseRuns(),
         getLeads(),
