@@ -40,6 +40,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               Your account needs to be set up. Please contact an administrator.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <ProfileSetupActions />
+          </CardContent>
         </Card>
       </div>
     );
@@ -56,6 +59,34 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+    </div>
+  );
+}
+
+function ProfileSetupActions() {
+  const { signOut } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  const handleSignOut = async () => {
+    setLoading(true);
+    try {
+      await signOut();
+      toast.success('Signed out successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to sign out');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        There was an issue setting up your profile. Please sign out and try again, or contact support if the problem persists.
+      </p>
+      <Button onClick={handleSignOut} className="w-full" disabled={loading}>
+        {loading ? 'Signing out...' : 'Sign Out'}
+      </Button>
     </div>
   );
 }
