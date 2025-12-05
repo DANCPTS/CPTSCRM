@@ -6,13 +6,27 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { getContacts } from '@/lib/db-helpers';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<any>(null);
 
   useEffect(() => {
     loadContacts();
@@ -41,6 +55,34 @@ export default function ContactsPage() {
       contact.companies?.name?.toLowerCase().includes(query) ||
       contact.job_title?.toLowerCase().includes(query)
     );
+  };
+
+  const handleDeleteClick = (contact: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setContactToDelete(contact);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!contactToDelete) return;
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', contactToDelete.id);
+
+      if (error) throw error;
+
+      setContacts(contacts.filter(c => c.id !== contactToDelete.id));
+      toast.success('Contact deleted successfully');
+    } catch (error: any) {
+      console.error('Failed to delete contact:', error);
+      toast.error('Failed to delete contact');
+    } finally {
+      setDeleteDialogOpen(false);
+      setContactToDelete(null);
+    }
   };
 
   const filteredContacts = filterContacts(contacts);
@@ -97,6 +139,14 @@ export default function ContactsPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{contact.language}</Badge>
                       {contact.gdpr_consent && <Badge>GDPR ✓</Badge>}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDeleteClick(contact, e)}
+                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -106,6 +156,26 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Contact</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {contactToDelete?.first_name} {contactToDelete?.last_name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
