@@ -130,19 +130,28 @@ export async function searchGlobal(query: string) {
   };
 }
 
-export async function getDashboardMetrics() {
+export async function getDashboardMetrics(userId?: string) {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAhead = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
+  let leadsThisWeekQuery = supabase
+    .from('leads')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', weekAgo.toISOString());
+
+  let allLeadsQuery = supabase
+    .from('leads')
+    .select('status, source');
+
+  if (userId) {
+    leadsThisWeekQuery = leadsThisWeekQuery.eq('assigned_to', userId);
+    allLeadsQuery = allLeadsQuery.eq('assigned_to', userId);
+  }
+
   const [leadsThisWeek, allLeads, upcomingRuns, candidateCourses] = await Promise.all([
-    supabase
-      .from('leads')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', weekAgo.toISOString()),
-    supabase
-      .from('leads')
-      .select('status, source'),
+    leadsThisWeekQuery,
+    allLeadsQuery,
     supabase
       .from('course_runs')
       .select('seats_total, seats_booked')
