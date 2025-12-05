@@ -261,49 +261,22 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
           .single();
 
         if (candidate) {
-          let existingContact = null;
+          const { data: contact, error: contactError } = await supabase
+            .from('contacts')
+            .insert([{
+              first_name: candidate.first_name,
+              last_name: candidate.last_name,
+              email: candidate.email || '',
+              phone: candidate.phone || '',
+              language: 'EN',
+              company_id: null,
+            }])
+            .select()
+            .single();
 
-          if (candidate.email) {
-            const { data } = await supabase
-              .from('contacts')
-              .select('id')
-              .ilike('email', candidate.email)
-              .maybeSingle();
-            existingContact = data;
-          }
-
-          if (!existingContact) {
-            const { data } = await supabase
-              .from('contacts')
-              .select('id')
-              .ilike('first_name', candidate.first_name)
-              .ilike('last_name', candidate.last_name)
-              .is('company_id', null)
-              .maybeSingle();
-            existingContact = data;
-          }
-
-          if (existingContact) {
-            contactId = existingContact.id;
-            companyId = null;
-          } else {
-            const { data: contact, error: contactError } = await supabase
-              .from('contacts')
-              .insert([{
-                first_name: candidate.first_name,
-                last_name: candidate.last_name,
-                email: candidate.email || '',
-                phone: candidate.phone || '',
-                language: 'EN',
-                company_id: null,
-              }])
-              .select()
-              .single();
-
-            if (contactError) throw contactError;
-            contactId = contact.id;
-            companyId = null;
-          }
+          if (contactError) throw contactError;
+          contactId = contact.id;
+          companyId = null;
         }
       } else if (clientType === 'new') {
         if (!isIndividual) {
@@ -329,40 +302,14 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
           companyId = null;
         }
 
-        let existingContact = null;
+        const { data: contact, error: contactError } = await supabase
+          .from('contacts')
+          .insert([{ ...newContactData, company_id: companyId }])
+          .select()
+          .single();
 
-        if (newContactData.email) {
-          const { data } = await supabase
-            .from('contacts')
-            .select('id')
-            .ilike('email', newContactData.email)
-            .maybeSingle();
-          existingContact = data;
-        }
-
-        if (!existingContact) {
-          const { data } = await supabase
-            .from('contacts')
-            .select('id')
-            .ilike('first_name', newContactData.first_name)
-            .ilike('last_name', newContactData.last_name)
-            .eq('company_id', companyId)
-            .maybeSingle();
-          existingContact = data;
-        }
-
-        if (existingContact) {
-          contactId = existingContact.id;
-        } else {
-          const { data: contact, error: contactError } = await supabase
-            .from('contacts')
-            .insert([{ ...newContactData, company_id: companyId }])
-            .select()
-            .single();
-
-          if (contactError) throw contactError;
-          contactId = contact.id;
-        }
+        if (contactError) throw contactError;
+        contactId = contact.id;
       }
 
       // Look up or create candidate by contact email
