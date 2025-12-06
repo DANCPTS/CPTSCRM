@@ -26,7 +26,7 @@ export async function getCompanies() {
 export async function getContacts() {
   const { data, error } = await supabase
     .from('contacts')
-    .select('*, companies(name)')
+    .select('*, companies!company_id(name)')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
@@ -46,7 +46,7 @@ export async function getCourses() {
 export async function getCourseRuns() {
   const { data, error } = await supabase
     .from('course_runs')
-    .select('*, courses(*)')
+    .select('*, courses!course_id(*), trainers!trainer_id(first_name, last_name), testers:trainers!tester_id(first_name, last_name)')
     .order('start_date', { ascending: true });
 
   if (error) throw error;
@@ -58,9 +58,10 @@ export async function getBookings() {
     .from('bookings')
     .select(`
       *,
-      contacts(*),
-      companies(name),
-      course_runs(*, courses(*))
+      contacts!contact_id(*),
+      companies!company_id(name),
+      candidates!candidate_id(first_name, last_name, email),
+      course_runs!course_run_id(*, courses!course_id(*))
     `)
     .order('created_at', { ascending: false });
 
@@ -71,7 +72,7 @@ export async function getBookings() {
 export async function getTasks(userId?: string) {
   let query = supabase
     .from('tasks')
-    .select('*, users(full_name)')
+    .select('*, users!assigned_to(full_name)')
     .order('due_date', { ascending: true });
 
   if (userId) {
@@ -87,7 +88,7 @@ export async function getTasks(userId?: string) {
 export async function getActivities(entityType: string, entityId: string) {
   const { data, error } = await supabase
     .from('activities')
-    .select('*, users(full_name)')
+    .select('*, users!user_id(full_name)')
     .eq('entity_type', entityType)
     .eq('entity_id', entityId)
     .order('created_at', { ascending: false });

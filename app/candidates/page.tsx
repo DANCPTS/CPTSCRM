@@ -221,7 +221,7 @@ export default function CandidatesPage() {
     try {
       const { data, error } = await supabase
         .from('candidate_courses')
-        .select('*, courses(title), course_runs(start_date, end_date, location, training_days, test_days)')
+        .select('*, courses!course_id(title), course_runs!course_run_id(start_date, end_date, location, training_days, test_days)')
         .eq('candidate_id', candidateId)
         .order('enrollment_date', { ascending: false });
 
