@@ -16,7 +16,7 @@ export async function getLeads() {
 export async function getCompanies() {
   const { data, error } = await supabase
     .from('companies')
-    .select('*, users(full_name)')
+    .select('*, users!account_manager_id(full_name)')
     .order('name');
 
   if (error) throw error;
