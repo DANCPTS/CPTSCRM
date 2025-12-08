@@ -170,6 +170,7 @@ Deno.serve(async (req: Request) => {
               body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
               .container { max-width: 600px; margin: 0 auto; padding: 20px; }
               .header { background-color: #0f3d5e; color: white; padding: 30px 20px; text-align: center; }
+              .logo { max-width: 250px; height: auto; margin: 0 auto 15px; display: block; }
               .content { background-color: #f9fafb; padding: 30px; }
               .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
             </style>
@@ -177,6 +178,7 @@ Deno.serve(async (req: Request) => {
           <body>
             <div class="container">
               <div class="header">
+                <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training" class="logo" />
                 <h1 style="margin: 0;">CPTS Training</h1>
               </div>
               <div class="content">
