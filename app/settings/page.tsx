@@ -81,6 +81,7 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    confirmPassword: '',
     fullName: '',
     role: 'sales' as 'admin' | 'sales' | 'trainer',
   });
@@ -250,6 +251,16 @@ export default function SettingsPage() {
       return;
     }
 
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
     setProcessing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -279,7 +290,7 @@ export default function SettingsPage() {
 
       toast.success('User created successfully');
       setCreateDialogOpen(false);
-      setFormData({ email: '', password: '', fullName: '', role: 'sales' });
+      setFormData({ email: '', password: '', confirmPassword: '', fullName: '', role: 'sales' });
       loadUsers();
     } catch (error: any) {
       toast.error(error.message || 'Failed to create user');
@@ -292,6 +303,16 @@ export default function SettingsPage() {
   const handleUpdatePassword = async () => {
     if (!formData.password || !selectedUser) {
       toast.error('Please enter a new password');
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters');
       return;
     }
 
@@ -322,7 +343,7 @@ export default function SettingsPage() {
 
       toast.success('Password updated successfully');
       setPasswordDialogOpen(false);
-      setFormData({ email: '', password: '', fullName: '', role: 'sales' });
+      setFormData({ email: '', password: '', confirmPassword: '', fullName: '', role: 'sales' });
       setSelectedUser(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to update password');
@@ -365,7 +386,7 @@ export default function SettingsPage() {
 
       toast.success('Role updated successfully');
       setRoleDialogOpen(false);
-      setFormData({ email: '', password: '', fullName: '', role: 'sales' });
+      setFormData({ email: '', password: '', confirmPassword: '', fullName: '', role: 'sales' });
       setSelectedUser(null);
       loadUsers();
     } catch (error: any) {
@@ -733,7 +754,17 @@ export default function SettingsPage() {
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Enter password"
+                placeholder="Enter password (min 6 characters)"
+              />
+            </div>
+            <div>
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                placeholder="Re-enter password"
               />
             </div>
             <div>
@@ -797,7 +828,7 @@ export default function SettingsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setRoleDialogOpen(false);
-              setFormData({ email: '', password: '', fullName: '', role: 'sales' });
+              setFormData({ email: '', password: '', confirmPassword: '', fullName: '', role: 'sales' });
             }}>
               Cancel
             </Button>
@@ -824,14 +855,24 @@ export default function SettingsPage() {
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Enter new password"
+                placeholder="Enter new password (min 6 characters)"
+              />
+            </div>
+            <div>
+              <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
+              <Input
+                id="confirmNewPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                placeholder="Re-enter new password"
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => {
               setPasswordDialogOpen(false);
-              setFormData({ ...formData, password: '' });
+              setFormData({ ...formData, password: '', confirmPassword: '' });
             }}>
               Cancel
             </Button>
