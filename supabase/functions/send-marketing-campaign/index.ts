@@ -179,7 +179,6 @@ Deno.serve(async (req: Request) => {
             <div class="container">
               <div class="header">
                 <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training" class="logo" />
-                <h1 style="margin: 0;">CPTS Training</h1>
               </div>
               <div class="content">
                 ${htmlBody}
