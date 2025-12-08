@@ -166,39 +166,28 @@ Deno.serve(async (req: Request) => {
           <!DOCTYPE html>
           <html>
           <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background-color: #0f3d5e; color: white; padding: 30px 20px; text-align: center; }
+              .content { background-color: #f9fafb; padding: 30px; }
+              .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+            </style>
           </head>
-          <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f4f4f4;">
-              <tr>
-                <td align="center" style="padding: 20px 0;">
-                  <table width="600" cellpadding="0" cellspacing="0" border="0" style="background-color: #ffffff; max-width: 600px;">
-                    <!-- Header with Logo -->
-                    <tr>
-                      <td align="center" style="background-color: #ffffff; padding: 30px 20px; border-bottom: 3px solid #F28D00;">
-                        <img src="https://cpcs-training-courses.co.uk/wp-content/uploads/2024/02/cpcs-training-courses-logo-removebg-preview.png" alt="CPTS Training - Construction and Plant Training Services" width="400" style="max-width: 400px; height: auto; display: block; margin: 0 auto;" />
-                      </td>
-                    </tr>
-                    <!-- Content -->
-                    <tr>
-                      <td style="background-color: #f9fafb; padding: 40px 30px; line-height: 1.8;">
-                        ${htmlBody}
-                      </td>
-                    </tr>
-                    <!-- Footer -->
-                    <tr>
-                      <td align="center" style="background-color: #0f3d5e; color: white; padding: 30px 20px;">
-                        <p style="margin: 8px 0;"><strong>CPTS Training - Construction and Plant Training Services</strong></p>
-                        <p style="margin: 8px 0; font-size: 18px; font-weight: bold; color: #F28D00;">📞 01234 604 151</p>
-                        <p style="margin: 8px 0;">✉️ <a href="mailto:daniel@cpts.uk" style="color: #F28D00; text-decoration: none;">daniel@cpts.uk</a></p>
-                        <p style="margin: 8px 0;">🌐 <a href="https://cpcs-training-courses.co.uk" style="color: #F28D00; text-decoration: none;">cpcs-training-courses.co.uk</a></p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1 style="margin: 0;">CPTS Training</h1>
+              </div>
+              <div class="content">
+                ${htmlBody}
+              </div>
+              <div class="footer">
+                <p><strong>CPTS Training - Construction and Plant Training Services</strong></p>
+                <p>📞 01234 604 151 | ✉️ daniel@cpts.uk</p>
+                <p>🌐 cpcs-training-courses.co.uk</p>
+              </div>
+            </div>
           </body>
           </html>
         `;
