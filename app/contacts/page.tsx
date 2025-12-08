@@ -1,16 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus } from 'lucide-react';
+import { Plus, ArrowUpDown } from 'lucide-react';
 import { getContacts } from '@/lib/db-helpers';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+type SortOption = 'name-asc' | 'name-desc' | 'email-asc' | 'email-desc' | 'company-asc' | 'company-desc';
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>('name-asc');
 
   useEffect(() => {
     loadContacts();
@@ -27,6 +36,55 @@ export default function ContactsPage() {
     }
   };
 
+  const sortedContacts = useMemo(() => {
+    const sorted = [...contacts];
+
+    switch (sortBy) {
+      case 'name-asc':
+        return sorted.sort((a, b) => {
+          const nameA = `${a.first_name} ${a.last_name}`.toLowerCase();
+          const nameB = `${b.first_name} ${b.last_name}`.toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+      case 'name-desc':
+        return sorted.sort((a, b) => {
+          const nameA = `${a.first_name} ${a.last_name}`.toLowerCase();
+          const nameB = `${b.first_name} ${b.last_name}`.toLowerCase();
+          return nameB.localeCompare(nameA);
+        });
+      case 'email-asc':
+        return sorted.sort((a, b) => (a.email || '').toLowerCase().localeCompare((b.email || '').toLowerCase()));
+      case 'email-desc':
+        return sorted.sort((a, b) => (b.email || '').toLowerCase().localeCompare((a.email || '').toLowerCase()));
+      case 'company-asc':
+        return sorted.sort((a, b) => {
+          const companyA = (a.companies?.name || '').toLowerCase();
+          const companyB = (b.companies?.name || '').toLowerCase();
+          return companyA.localeCompare(companyB);
+        });
+      case 'company-desc':
+        return sorted.sort((a, b) => {
+          const companyA = (a.companies?.name || '').toLowerCase();
+          const companyB = (b.companies?.name || '').toLowerCase();
+          return companyB.localeCompare(companyA);
+        });
+      default:
+        return sorted;
+    }
+  }, [contacts, sortBy]);
+
+  const getSortLabel = () => {
+    switch (sortBy) {
+      case 'name-asc': return 'Name (A-Z)';
+      case 'name-desc': return 'Name (Z-A)';
+      case 'email-asc': return 'Email (A-Z)';
+      case 'email-desc': return 'Email (Z-A)';
+      case 'company-asc': return 'Company (A-Z)';
+      case 'company-desc': return 'Company (Z-A)';
+      default: return 'Sort';
+    }
+  };
+
   return (
     <AppShell>
       <div className="p-8">
@@ -35,10 +93,40 @@ export default function ContactsPage() {
             <h1 className="text-3xl font-bold text-slate-900">Contacts</h1>
             <p className="text-slate-600 mt-1">Manage trainees and contacts</p>
           </div>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Contact
-          </Button>
+          <div className="flex items-center gap-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <ArrowUpDown className="mr-2 h-4 w-4" />
+                  {getSortLabel()}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setSortBy('name-asc')}>
+                  Name (A-Z)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('name-desc')}>
+                  Name (Z-A)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('email-asc')}>
+                  Email (A-Z)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('email-desc')}>
+                  Email (Z-A)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('company-asc')}>
+                  Company (A-Z)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy('company-desc')}>
+                  Company (Z-A)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Contact
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -47,7 +135,7 @@ export default function ContactsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {contacts.map(contact => (
+            {sortedContacts.map(contact => (
               <Card key={contact.id} className="hover:shadow-sm transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
