@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -28,6 +28,7 @@ const statuses = [
 
 export default function LeadsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { userProfile } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +58,18 @@ export default function LeadsPage() {
       setSelectedUserId(userProfile.id);
     }
   }, [userProfile]);
+
+  useEffect(() => {
+    const leadId = searchParams.get('id');
+    if (leadId && leads.length > 0) {
+      const lead = leads.find(l => l.id === leadId);
+      if (lead) {
+        setSelectedLead(lead);
+        setDialogOpen(true);
+        router.replace('/leads');
+      }
+    }
+  }, [searchParams, leads, router]);
 
   useEffect(() => {
     if (selectedUserId) {

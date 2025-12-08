@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import { ExternalLink } from 'lucide-react';
 
 interface TaskDialogProps {
   open: boolean;
@@ -19,6 +21,7 @@ interface TaskDialogProps {
 }
 
 export function TaskDialog({ open, onOpenChange, task, onTaskUpdated }: TaskDialogProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -172,6 +175,24 @@ export function TaskDialog({ open, onOpenChange, task, onTaskUpdated }: TaskDial
     return null;
   };
 
+  const navigateToRelatedEntity = () => {
+    if (!relatedEntity) return;
+
+    const { type, data } = relatedEntity;
+    const routes: Record<string, string> = {
+      lead: '/leads',
+      company: '/companies',
+      candidate: '/candidates',
+      booking: '/bookings',
+    };
+
+    const basePath = routes[type];
+    if (basePath && data?.id) {
+      onOpenChange(false);
+      router.push(`${basePath}?id=${data.id}`);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -221,10 +242,22 @@ export function TaskDialog({ open, onOpenChange, task, onTaskUpdated }: TaskDial
 
           {relatedEntity && (
             <div className="p-4 bg-slate-50 rounded-lg">
-              <Label className="text-sm text-slate-600">Related To</Label>
-              <p className="font-semibold capitalize">
-                {relatedEntity.type}: {getEntityDisplayName()}
-              </p>
+              <Label className="text-sm text-slate-600 mb-2 block">Related To</Label>
+              <div className="flex items-center justify-between">
+                <p className="font-semibold capitalize">
+                  {relatedEntity.type}: {getEntityDisplayName()}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={navigateToRelatedEntity}
+                  className="gap-2"
+                >
+                  View {relatedEntity.type}
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
           )}
 
