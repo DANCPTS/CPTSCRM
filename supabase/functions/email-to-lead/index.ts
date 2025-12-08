@@ -246,8 +246,6 @@ Deno.serve(async (req: Request) => {
     const errors = [];
     const skipped = [];
 
-    const danielUserId = 'bb8f5dec-898a-41a1-8e63-73903558ad43';
-
     for (const email of enquiryEmails) {
       try {
         const { data: existingLead } = await supabase
@@ -265,7 +263,7 @@ Deno.serve(async (req: Request) => {
         const leadData = parseEmailToLead(email);
         const { data, error } = await supabase
           .from('leads')
-          .insert([{ ...leadData, assigned_to: danielUserId, email_message_id: email.messageId }])
+          .insert([{ ...leadData, assigned_to: user.id, created_by: user.id, email_message_id: email.messageId }])
           .select()
           .single();
 
