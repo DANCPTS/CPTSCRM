@@ -84,13 +84,18 @@ export default function BookingFormDetailPage() {
 
       if (data?.form_data?.delegates && data.form_data.delegates.length > 0) {
         const delegate = data.form_data.delegates[0];
-        const delegateEmail = delegate.email || data.form_data.contact_email;
+        const delegateName = delegate.name;
 
-        if (delegateEmail) {
+        if (delegateName) {
+          const nameParts = delegateName.trim().split(' ');
+          let firstName = nameParts[0];
+          let lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
           const { data: candidateData } = await supabase
             .from('candidates')
             .select('id')
-            .eq('email', delegateEmail)
+            .ilike('first_name', firstName)
+            .ilike('last_name', lastName)
             .eq('status', 'active')
             .maybeSingle();
 
