@@ -916,11 +916,13 @@ export default function LeadsPage() {
 
       <InvoiceDialog
         open={invoiceDialogOpen}
-        onClose={() => {
+        onClose={async () => {
           setInvoiceDialogOpen(false);
           setSelectedLeadForInvoice(null);
-          loadLeadBookings();
-          loadBookingForms();
+          await Promise.all([loadLeadBookings(), loadBookingForms()]);
+          setTimeout(() => {
+            loadBookingForms();
+          }, 500);
         }}
         leadId={selectedLeadForInvoice?.id}
         leadName={selectedLeadForInvoice?.name}

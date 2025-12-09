@@ -69,16 +69,36 @@ export function InvoiceDialog({ open, onClose, leadId, leadName }: InvoiceDialog
     setLoading(true);
 
     try {
-      // Update booking_forms table
-      const { error } = await supabase
+      const { data: existingForm, error: checkError } = await supabase
+        .from('booking_forms')
+        .select('id')
+        .eq('lead_id', leadId)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (!existingForm) {
+        toast.error('No booking form found for this lead. Please send a booking form first.');
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
         .from('booking_forms')
         .update({
           invoice_sent: invoiceLater ? false : invoiceSent,
           invoice_number: invoiceLater ? 'DEFERRED' : invoiceNumber.trim(),
         })
-        .eq('lead_id', leadId);
+        .eq('lead_id', leadId)
+        .select();
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        toast.error('Failed to update invoice details');
+        setLoading(false);
+        return;
+      }
 
       toast.success(invoiceLater ? 'Invoice deferred successfully' : 'Invoice details saved successfully');
 
