@@ -70,6 +70,60 @@
     --chart-4: 45 100% 65%;
     --chart-5: 27 87% 70%;
   }
+
+  .ocean {
+    --background: 200 35% 96%;
+    --foreground: 200 30% 15%;
+    --card: 195 40% 98%;
+    --card-foreground: 200 30% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 30% 15%;
+    --primary: 195 85% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 175 70% 45%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 195 30% 92%;
+    --muted-foreground: 200 20% 45%;
+    --accent: 185 75% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 195 25% 85%;
+    --input: 195 25% 88%;
+    --ring: 185 75% 50%;
+    --chart-1: 195 85% 40%;
+    --chart-2: 175 70% 45%;
+    --chart-3: 185 75% 50%;
+    --chart-4: 200 60% 55%;
+    --chart-5: 190 65% 48%;
+  }
+
+  .forest {
+    --background: 135 25% 96%;
+    --foreground: 140 30% 15%;
+    --card: 135 30% 98%;
+    --card-foreground: 140 30% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 140 30% 15%;
+    --primary: 140 60% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 25 70% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 135 25% 92%;
+    --muted-foreground: 140 15% 45%;
+    --accent: 160 55% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 135 20% 85%;
+    --input: 135 20% 88%;
+    --ring: 140 60% 35%;
+    --chart-1: 140 60% 35%;
+    --chart-2: 160 55% 45%;
+    --chart-3: 25 70% 50%;
+    --chart-4: 45 85% 55%;
+    --chart-5: 120 45% 50%;
+  }
 }
 
 @layer base {

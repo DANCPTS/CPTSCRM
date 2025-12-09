@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Download, Upload, Plus, Trash2, Key, Users as UsersIcon, UserCog, Palette, Moon, Sun } from 'lucide-react';
+import { Download, Upload, Plus, Trash2, Key, Users as UsersIcon, UserCog, Palette, Moon, Sun, Waves, Trees } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
@@ -490,7 +490,15 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {mounted && theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                {mounted && theme === 'dark' ? (
+                  <Moon className="h-5 w-5" />
+                ) : theme === 'ocean' ? (
+                  <Waves className="h-5 w-5" />
+                ) : theme === 'forest' ? (
+                  <Trees className="h-5 w-5" />
+                ) : (
+                  <Sun className="h-5 w-5" />
+                )}
                 Appearance
               </CardTitle>
               <CardDescription>
@@ -507,7 +515,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mb-3">
                       Select your preferred theme
                     </p>
-                    <div className="flex gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <Button
                         variant={theme === 'light' ? 'default' : 'outline'}
                         className="flex-1"
@@ -529,6 +537,28 @@ export default function SettingsPage() {
                       >
                         <Moon className="mr-2 h-4 w-4" />
                         Dark
+                      </Button>
+                      <Button
+                        variant={theme === 'ocean' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => {
+                          console.log('Setting theme to ocean');
+                          setTheme('ocean');
+                        }}
+                      >
+                        <Waves className="mr-2 h-4 w-4" />
+                        Ocean
+                      </Button>
+                      <Button
+                        variant={theme === 'forest' ? 'default' : 'outline'}
+                        className="flex-1"
+                        onClick={() => {
+                          console.log('Setting theme to forest');
+                          setTheme('forest');
+                        }}
+                      >
+                        <Trees className="mr-2 h-4 w-4" />
+                        Forest
                       </Button>
                     </div>
                   </div>
