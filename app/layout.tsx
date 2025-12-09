@@ -23,8 +23,9 @@ export default function RootLayout({
       <body className={montserrat.className}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem={true}
+          defaultTheme="light"
+          enableSystem={false}
+          themes={['light', 'dark', 'ocean', 'forest']}
           storageKey="cpts-theme"
           disableTransitionOnChange
         >
