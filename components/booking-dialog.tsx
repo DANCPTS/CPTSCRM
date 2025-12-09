@@ -417,7 +417,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
         courseRunId = newRun.id;
       }
 
-      const { error: bookingError } = await supabase
+      const { data: newBooking, error: bookingError } = await supabase
         .from('bookings')
         .insert([
           {
@@ -432,11 +432,51 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             lead_id: prefillData?.leadId || null,
             invoice_sent: prefillData?.invoiceSent || false,
           },
-        ]);
+        ])
+        .select()
+        .single();
 
       if (bookingError) throw bookingError;
 
-      toast.success('Booking created successfully');
+      if (prefillData?.leadId && newBooking) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+
+          if (session) {
+            const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-joining-instructions`;
+
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ leadId: prefillData.leadId }),
+            });
+
+            if (response.ok) {
+              await supabase
+                .from('bookings')
+                .update({ joining_instructions_sent: true })
+                .eq('id', newBooking.id);
+
+              toast.success('Booking created and joining instructions sent!');
+            } else {
+              toast.success('Booking created successfully');
+              toast.info('Please send joining instructions manually');
+            }
+          } else {
+            toast.success('Booking created successfully');
+          }
+        } catch (emailError) {
+          console.error('Failed to send joining instructions:', emailError);
+          toast.success('Booking created successfully');
+          toast.info('Please send joining instructions manually');
+        }
+      } else {
+        toast.success('Booking created successfully');
+      }
+
       onClose();
       resetForm();
     } catch (error: any) {
