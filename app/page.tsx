@@ -17,6 +17,7 @@ export default function Home() {
   const { userProfile } = useAuth();
   const [metrics, setMetrics] = useState<any>(null);
   const [todayTasks, setTodayTasks] = useState<any[]>([]);
+  const [next7DaysTasks, setNext7DaysTasks] = useState<any[]>([]);
   const [upcomingRuns, setUpcomingRuns] = useState<any[]>([]);
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
   const [weeklyAttendees, setWeeklyAttendees] = useState<any[]>([]);
@@ -41,13 +42,20 @@ export default function Home() {
       const today = new Date();
       const nextWeek = addDays(today, 7);
 
-      const filteredTasks = tasksData.filter((task: any) => {
+      const tasksDueToday = tasksData.filter((task: any) => {
         if (!task.due_date || task.status === 'done') return false;
         const dueDate = parseISO(task.due_date);
-        return isBefore(dueDate, nextWeek);
+        return isToday(dueDate);
       });
 
-      setTodayTasks(filteredTasks);
+      const tasksDueNext7Days = tasksData.filter((task: any) => {
+        if (!task.due_date || task.status === 'done') return false;
+        const dueDate = parseISO(task.due_date);
+        return !isToday(dueDate) && isBefore(dueDate, nextWeek);
+      });
+
+      setTodayTasks(tasksDueToday);
+      setNext7DaysTasks(tasksDueNext7Days);
 
       const filteredRuns = runsData.filter((run: any) => {
         const startDate = parseISO(run.start_date);
@@ -271,37 +279,71 @@ export default function Home() {
               <Card className="shadow-md hover:shadow-xl transition-shadow border-t-4 border-t-accent flex flex-col">
                 <CardHeader>
                   <CardTitle className="text-primary">My Tasks</CardTitle>
-                  <CardDescription>Tasks due in the next 7 days</CardDescription>
+                  <CardDescription>Upcoming tasks</CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6 flex-1 flex flex-col">
-                  <div className="flex-1">
-                    {todayTasks.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No upcoming tasks</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {todayTasks.map((task: any) => (
-                          <div
-                            key={task.id}
-                            className="flex items-start justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
-                          >
-                            <div className="flex-1">
-                              <p className="font-semibold text-sm text-primary">{task.title}</p>
-                              {task.due_date && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
-                                </p>
-                              )}
-                            </div>
-                            <Badge
-                              variant={task.status === 'done' ? 'default' : 'secondary'}
-                              className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
+                  <div className="flex-1 space-y-6">
+                    <div>
+                      <h3 className="text-sm font-bold text-red-600 mb-3 uppercase tracking-wide">Due Today</h3>
+                      {todayTasks.length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic">No tasks due today</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {todayTasks.map((task: any) => (
+                            <div
+                              key={task.id}
+                              className="flex items-start justify-between rounded-lg border-2 border-red-200 bg-red-50 p-4 hover:bg-red-100 transition-all"
                             >
-                              {task.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm text-primary">{task.title}</p>
+                                {task.due_date && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                  </p>
+                                )}
+                              </div>
+                              <Badge
+                                variant={task.status === 'done' ? 'default' : 'secondary'}
+                                className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
+                              >
+                                {task.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-bold text-primary mb-3 uppercase tracking-wide">Next 7 Days</h3>
+                      {next7DaysTasks.length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic">No upcoming tasks</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {next7DaysTasks.map((task: any) => (
+                            <div
+                              key={task.id}
+                              className="flex items-start justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
+                            >
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm text-primary">{task.title}</p>
+                                {task.due_date && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                  </p>
+                                )}
+                              </div>
+                              <Badge
+                                variant={task.status === 'done' ? 'default' : 'secondary'}
+                                className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
+                              >
+                                {task.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <Button asChild className="w-full mt-4 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md">
                     <Link href="/tasks">View All Tasks</Link>
