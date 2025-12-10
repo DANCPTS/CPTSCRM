@@ -115,6 +115,8 @@ export function AppNav() {
       router.push(`/bookings/${notification.reference_id}`);
     } else if (notification.reference_type === 'lead' && notification.reference_id) {
       router.push(`/leads`);
+    } else if (notification.reference_type === 'task' && notification.reference_id) {
+      router.push(`/tasks?id=${notification.reference_id}`);
     }
   };
 

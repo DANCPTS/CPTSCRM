@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +19,8 @@ type ViewMode = 'list' | 'calendar';
 
 export default function TasksPage() {
   const { userProfile } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<any>(null);
@@ -28,6 +31,18 @@ export default function TasksPage() {
   useEffect(() => {
     loadTasks();
   }, [userProfile]);
+
+  useEffect(() => {
+    const taskId = searchParams.get('id');
+    if (taskId && tasks.length > 0) {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        setSelectedTask(task);
+        setTaskDialogOpen(true);
+        router.replace('/tasks', { scroll: false });
+      }
+    }
+  }, [searchParams, tasks, router]);
 
   const loadTasks = async () => {
     try {
