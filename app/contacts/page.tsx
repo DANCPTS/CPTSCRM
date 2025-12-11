@@ -5,7 +5,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, ArrowUpDown } from 'lucide-react';
+import { Plus, ArrowUpDown, Trash2 } from 'lucide-react';
 import { getContacts } from '@/lib/db-helpers';
 import {
   DropdownMenu,
@@ -13,6 +13,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 type SortOption = 'name-asc' | 'name-desc' | 'email-asc' | 'email-desc' | 'company-asc' | 'company-desc';
 
@@ -20,6 +32,8 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+  const [contactToDelete, setContactToDelete] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadContacts();
@@ -33,6 +47,29 @@ export default function ContactsPage() {
       console.error('Failed to load contacts:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!contactToDelete) return;
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', contactToDelete.id);
+
+      if (error) throw error;
+
+      toast.success('Contact deleted successfully');
+      setContactToDelete(null);
+      loadContacts();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete contact');
+      console.error('Failed to delete contact:', error);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -151,6 +188,13 @@ export default function ContactsPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{contact.language}</Badge>
                       {contact.gdpr_consent && <Badge>GDPR ✓</Badge>}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setContactToDelete(contact)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -159,6 +203,27 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!contactToDelete} onOpenChange={(open) => !open && setContactToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Contact</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {contactToDelete?.first_name} {contactToDelete?.last_name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteContact}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
