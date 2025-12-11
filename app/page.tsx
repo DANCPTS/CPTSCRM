@@ -58,7 +58,7 @@ export default function Home() {
       const tasksDueNext7Days = tasksData.filter((task: any) => {
         if (!task.due_date || task.status === 'done') return false;
         const dueDate = parseISO(task.due_date);
-        return !isToday(dueDate) && isBefore(dueDate, nextWeek);
+        return !isToday(dueDate) && isBefore(dueDate, nextWeek) && !isBefore(dueDate, today);
       });
 
       setOverdueTasks(tasksOverdue);
@@ -299,22 +299,21 @@ export default function Home() {
                         </h3>
                         <div className="space-y-3">
                           {overdueTasks.map((task: any) => (
-                            <div
-                              key={task.id}
-                              className="flex items-start justify-between rounded-lg border-2 border-red-300 bg-red-100 p-4 hover:bg-red-200 transition-all"
-                            >
-                              <div className="flex-1">
-                                <p className="font-semibold text-sm text-red-900">{task.title}</p>
-                                {task.due_date && (
-                                  <p className="text-xs text-red-700 mt-1 font-medium">
-                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
-                                  </p>
-                                )}
+                            <Link href={`/tasks?id=${task.id}`} key={task.id}>
+                              <div className="flex items-start justify-between rounded-lg border-2 border-red-300 bg-red-100 p-4 hover:bg-red-200 transition-all cursor-pointer">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-sm text-red-900">{task.title}</p>
+                                  {task.due_date && (
+                                    <p className="text-xs text-red-700 mt-1 font-medium">
+                                      Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge variant="destructive" className="bg-red-600">
+                                  {task.status}
+                                </Badge>
                               </div>
-                              <Badge variant="destructive" className="bg-red-600">
-                                {task.status}
-                              </Badge>
-                            </div>
+                            </Link>
                           ))}
                         </div>
                       </div>
@@ -327,25 +326,24 @@ export default function Home() {
                       ) : (
                         <div className="space-y-3">
                           {todayTasks.map((task: any) => (
-                            <div
-                              key={task.id}
-                              className="flex items-start justify-between rounded-lg border-2 border-red-200 bg-red-50 p-4 hover:bg-red-100 transition-all"
-                            >
-                              <div className="flex-1">
-                                <p className="font-semibold text-sm text-primary">{task.title}</p>
-                                {task.due_date && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
-                                  </p>
-                                )}
+                            <Link href={`/tasks?id=${task.id}`} key={task.id}>
+                              <div className="flex items-start justify-between rounded-lg border-2 border-red-200 bg-red-50 p-4 hover:bg-red-100 transition-all cursor-pointer">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-sm text-primary">{task.title}</p>
+                                  {task.due_date && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant={task.status === 'done' ? 'default' : 'secondary'}
+                                  className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
+                                >
+                                  {task.status}
+                                </Badge>
                               </div>
-                              <Badge
-                                variant={task.status === 'done' ? 'default' : 'secondary'}
-                                className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
-                              >
-                                {task.status}
-                              </Badge>
-                            </div>
+                            </Link>
                           ))}
                         </div>
                       )}
@@ -358,25 +356,24 @@ export default function Home() {
                       ) : (
                         <div className="space-y-3">
                           {next7DaysTasks.map((task: any) => (
-                            <div
-                              key={task.id}
-                              className="flex items-start justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
-                            >
-                              <div className="flex-1">
-                                <p className="font-semibold text-sm text-primary">{task.title}</p>
-                                {task.due_date && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
-                                  </p>
-                                )}
+                            <Link href={`/tasks?id=${task.id}`} key={task.id}>
+                              <div className="flex items-start justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all cursor-pointer">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-sm text-primary">{task.title}</p>
+                                  {task.due_date && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant={task.status === 'done' ? 'default' : 'secondary'}
+                                  className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
+                                >
+                                  {task.status}
+                                </Badge>
                               </div>
-                              <Badge
-                                variant={task.status === 'done' ? 'default' : 'secondary'}
-                                className={task.status === 'done' ? 'bg-secondary' : 'bg-accent'}
-                              >
-                                {task.status}
-                              </Badge>
-                            </div>
+                            </Link>
                           ))}
                         </div>
                       )}
