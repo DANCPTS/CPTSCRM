@@ -168,6 +168,7 @@ export function TaskDialog({ open, onOpenChange, task, onTaskUpdated }: TaskDial
     if (!relatedEntity) return null;
 
     const { type, data } = relatedEntity;
+    if (!data) return null;
     if (type === 'lead') return data.name;
     if (type === 'company') return data.name;
     if (type === 'candidate') return data.name;
