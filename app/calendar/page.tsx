@@ -986,7 +986,7 @@ export default function CalendarPage() {
                     <p>{format(parseISO(selectedRunDetails.start_date), 'MMM d')} - {format(parseISO(selectedRunDetails.end_date), 'MMM d, yyyy')}</p>
                     <p>{selectedRunDetails.location}</p>
                     <p className="font-semibold mt-1">
-                      {selectedRunDetails.enrolled_count || 0} / {selectedRunDetails.capacity} seats booked
+                      {selectedRunDetails.enrolled_count || 0} / {selectedRunDetails.capacity} seats filled (active enrollments only)
                     </p>
                   </div>
                 )}
@@ -997,7 +997,7 @@ export default function CalendarPage() {
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="candidates">
                   <Users className="h-4 w-4 mr-2" />
-                  Enrolled Candidates ({selectedRunCandidates.length})
+                  Candidates ({selectedRunCandidates.filter((c: any) => c.status === 'enrolled').length} active, {selectedRunCandidates.length} total)
                 </TabsTrigger>
                 <TabsTrigger value="settings">
                   <Settings className="h-4 w-4 mr-2" />
@@ -1011,81 +1011,94 @@ export default function CalendarPage() {
                     No candidates enrolled yet for this course run
                   </div>
                 ) : (
-                  selectedRunCandidates.map((candidateCourse) => (
-                    <Card key={candidateCourse.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold">
-                                {candidateCourse.candidates?.first_name} {candidateCourse.candidates?.last_name}
-                              </h4>
-                              <Badge variant={candidateCourse.status === 'enrolled' ? 'default' : 'secondary'}>
-                                {candidateCourse.status}
-                              </Badge>
-                              {candidateCourse.result && candidateCourse.result !== 'pending' && (
-                                <Badge
-                                  className={candidateCourse.result === 'passed'
-                                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                                    : 'bg-red-600 hover:bg-red-700 text-white'
-                                  }
-                                >
-                                  {candidateCourse.result}
-                                </Badge>
-                              )}
+                  selectedRunCandidates.map((candidateCourse) => {
+                    const isCancelled = candidateCourse.status === 'cancelled';
+                    return (
+                      <Card key={candidateCourse.id} className={isCancelled ? 'opacity-60 bg-slate-50' : ''}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className={`font-semibold ${isCancelled ? 'text-slate-500 line-through' : ''}`}>
+                                  {candidateCourse.candidates?.first_name} {candidateCourse.candidates?.last_name}
+                                </h4>
+                                {isCancelled ? (
+                                  <Badge variant="secondary" className="bg-slate-400 text-white">
+                                    Cancelled
+                                  </Badge>
+                                ) : (
+                                  <Badge variant={candidateCourse.status === 'enrolled' ? 'default' : 'secondary'}>
+                                    {candidateCourse.status}
+                                  </Badge>
+                                )}
+                                {candidateCourse.result && candidateCourse.result !== 'pending' && !isCancelled && (
+                                  <Badge
+                                    className={candidateCourse.result === 'passed'
+                                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                                      : 'bg-red-600 hover:bg-red-700 text-white'
+                                    }
+                                  >
+                                    {candidateCourse.result}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className={`text-sm mt-1 ${isCancelled ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {candidateCourse.candidates?.email && <p>{candidateCourse.candidates.email}</p>}
+                                {candidateCourse.candidates?.phone && <p>{candidateCourse.candidates.phone}</p>}
+                                <p className="text-xs mt-1">
+                                  Enrolled: {format(parseISO(candidateCourse.enrollment_date), 'MMM d, yyyy')}
+                                </p>
+                                {!isCancelled && candidateCourse.testTimes && candidateCourse.testTimes.length > 0 && (
+                                  <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                                    <p className="text-xs font-semibold text-blue-900 mb-1">Test Times:</p>
+                                    {candidateCourse.testTimes.map((testTime: any, idx: number) => (
+                                      <div key={idx} className="text-xs text-blue-800">
+                                        <span className="font-medium">{format(parseISO(testTime.date), 'MMM d, yyyy')}:</span>
+                                        {testTime.theory_test_time && (
+                                          <span className="ml-2">Theory: {testTime.theory_test_time}</span>
+                                        )}
+                                        {testTime.practical_test_time && (
+                                          <span className="ml-2">Practical: {testTime.practical_test_time}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-sm text-slate-500 mt-1">
-                              {candidateCourse.candidates?.email && <p>{candidateCourse.candidates.email}</p>}
-                              {candidateCourse.candidates?.phone && <p>{candidateCourse.candidates.phone}</p>}
-                              <p className="text-xs mt-1">
-                                Enrolled: {format(parseISO(candidateCourse.enrollment_date), 'MMM d, yyyy')}
-                              </p>
-                              {candidateCourse.testTimes && candidateCourse.testTimes.length > 0 && (
-                                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-                                  <p className="text-xs font-semibold text-blue-900 mb-1">Test Times:</p>
-                                  {candidateCourse.testTimes.map((testTime: any, idx: number) => (
-                                    <div key={idx} className="text-xs text-blue-800">
-                                      <span className="font-medium">{format(parseISO(testTime.date), 'MMM d, yyyy')}:</span>
-                                      {testTime.theory_test_time && (
-                                        <span className="ml-2">Theory: {testTime.theory_test_time}</span>
-                                      )}
-                                      {testTime.practical_test_time && (
-                                        <span className="ml-2">Practical: {testTime.practical_test_time}</span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
+                            <div className="flex gap-2">
+                              {!isCancelled && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCandidateCourse(candidateCourse);
+                                      setAttendanceDialogOpen(true);
+                                    }}
+                                    title="Mark attendance"
+                                  >
+                                    <Users className="h-4 w-4 mr-1" />
+                                    Attendance
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => handleRemoveCandidate(candidateCourse, e)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Remove from course"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCandidateCourse(candidateCourse);
-                                setAttendanceDialogOpen(true);
-                              }}
-                              title="Mark attendance"
-                            >
-                              <Users className="h-4 w-4 mr-1" />
-                              Attendance
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => handleRemoveCandidate(candidateCourse, e)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title="Remove from course"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                        </CardContent>
+                      </Card>
+                    );
+                  })
                 )}
               </TabsContent>
 
