@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 export default function Home() {
   const { userProfile } = useAuth();
   const [metrics, setMetrics] = useState<any>(null);
+  const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
   const [todayTasks, setTodayTasks] = useState<any[]>([]);
   const [next7DaysTasks, setNext7DaysTasks] = useState<any[]>([]);
   const [upcomingRuns, setUpcomingRuns] = useState<any[]>([]);
@@ -42,6 +43,12 @@ export default function Home() {
       const today = new Date();
       const nextWeek = addDays(today, 7);
 
+      const tasksOverdue = tasksData.filter((task: any) => {
+        if (!task.due_date || task.status === 'done') return false;
+        const dueDate = parseISO(task.due_date);
+        return isBefore(dueDate, today) && !isToday(dueDate);
+      });
+
       const tasksDueToday = tasksData.filter((task: any) => {
         if (!task.due_date || task.status === 'done') return false;
         const dueDate = parseISO(task.due_date);
@@ -54,6 +61,7 @@ export default function Home() {
         return !isToday(dueDate) && isBefore(dueDate, nextWeek);
       });
 
+      setOverdueTasks(tasksOverdue);
       setTodayTasks(tasksDueToday);
       setNext7DaysTasks(tasksDueNext7Days);
 
@@ -283,6 +291,35 @@ export default function Home() {
                 </CardHeader>
                 <CardContent className="pt-6 flex-1 flex flex-col">
                   <div className="flex-1 space-y-6">
+                    {overdueTasks.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-bold text-red-700 mb-3 uppercase tracking-wide flex items-center gap-2">
+                          Overdue
+                          <Badge className="bg-red-600 text-white">{overdueTasks.length}</Badge>
+                        </h3>
+                        <div className="space-y-3">
+                          {overdueTasks.map((task: any) => (
+                            <div
+                              key={task.id}
+                              className="flex items-start justify-between rounded-lg border-2 border-red-300 bg-red-100 p-4 hover:bg-red-200 transition-all"
+                            >
+                              <div className="flex-1">
+                                <p className="font-semibold text-sm text-red-900">{task.title}</p>
+                                {task.due_date && (
+                                  <p className="text-xs text-red-700 mt-1 font-medium">
+                                    Due: {format(parseISO(task.due_date), 'MMM d, yyyy')}
+                                  </p>
+                                )}
+                              </div>
+                              <Badge variant="destructive" className="bg-red-600">
+                                {task.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <h3 className="text-sm font-bold text-red-600 mb-3 uppercase tracking-wide">Due Today</h3>
                       {todayTasks.length === 0 ? (
