@@ -177,7 +177,27 @@ export default function LeadsPage() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setLeads(data || []);
+
+      // Filter out won/lost leads older than 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const filteredLeads = (data || []).filter(lead => {
+        // Keep all leads that are not won or lost
+        if (lead.status !== 'won' && lead.status !== 'lost') {
+          return true;
+        }
+
+        // For won/lost leads, only show if closed within last 30 days or no closed_at set
+        if (!lead.closed_at) {
+          return true; // Keep if no closed_at (shouldn't happen but safe fallback)
+        }
+
+        const closedDate = new Date(lead.closed_at);
+        return closedDate >= thirtyDaysAgo;
+      });
+
+      setLeads(filteredLeads);
     } catch (error: any) {
       toast.error('Failed to load leads');
       console.error(error);
