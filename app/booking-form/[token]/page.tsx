@@ -180,6 +180,45 @@ export default function BookingFormPage() {
     setIsDrawing(false);
   };
 
+  const startTouchDrawing = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const touch = e.touches[0];
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+  };
+
+  const touchDraw = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const touch = e.touches[0];
+    ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopTouchDrawing = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setIsDrawing(false);
+  };
+
   const clearSignature = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -484,18 +523,18 @@ export default function BookingFormPage() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="po_number">PO Number (if applicable)</Label>
-                    <Input
-                      id="po_number"
-                      value={formData.po_number}
-                      onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
-                    />
+                {customerType === 'business' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="po_number">PO Number (if applicable)</Label>
+                      <Input
+                        id="po_number"
+                        value={formData.po_number}
+                        onChange={(e) => setFormData({ ...formData, po_number: e.target.value })}
+                      />
+                    </div>
                   </div>
-
-                </div>
+                )}
               </div>
 
               <div>
@@ -605,17 +644,20 @@ export default function BookingFormPage() {
 
               <div className="space-y-4 border-t pt-6">
                 <h3 className="text-lg font-semibold">Signature *</h3>
-                <p className="text-sm text-gray-600">Please sign in the box below using your mouse or touchpad</p>
+                <p className="text-sm text-gray-600">Please sign in the box below using your mouse, touchpad, or finger</p>
                 <div className="border-2 border-gray-300 rounded-lg bg-white">
                   <canvas
                     ref={canvasRef}
                     width={600}
                     height={200}
-                    className="w-full cursor-crosshair"
+                    className="w-full cursor-crosshair touch-none"
                     onMouseDown={startDrawing}
                     onMouseMove={draw}
                     onMouseUp={stopDrawing}
                     onMouseLeave={stopDrawing}
+                    onTouchStart={startTouchDrawing}
+                    onTouchMove={touchDraw}
+                    onTouchEnd={stopTouchDrawing}
                   />
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={clearSignature}>
