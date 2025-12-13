@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { UserPlus, Users, User } from 'lucide-react';
+import { UserPlus, Users, User, AlertTriangle, Search } from 'lucide-react';
 
 interface BookingDialogProps {
   open: boolean;
@@ -41,6 +43,9 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
   const [courseRuns, setCourseRuns] = useState<any[]>([]);
   const [filteredCourseRuns, setFilteredCourseRuns] = useState<any[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<any[]>([]);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<any[]>([]);
+  const [preSearchQuery, setPreSearchQuery] = useState('');
+  const [preSearchResults, setPreSearchResults] = useState<any[]>([]);
 
   const [bookingData, setBookingData] = useState({
     contact_id: '',
@@ -181,7 +186,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
     try {
       const [companiesRes, contactsRes, candidatesRes, coursesRes, runsRes] = await Promise.all([
         supabase.from('companies').select('id, name').order('name'),
-        supabase.from('contacts').select('id, first_name, last_name, company_id').order('last_name'),
+        supabase.from('contacts').select('id, first_name, last_name, email, phone, company_id, companies(name)').order('last_name'),
         supabase.from('candidates').select('id, first_name, last_name, email, phone').eq('status', 'active').order('last_name'),
         supabase.from('courses').select('id, title').order('title'),
         supabase
@@ -237,6 +242,132 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
       accreditation,
       amount: pricing ? pricing.price.toString() : prev.amount,
     }));
+  };
+
+  useEffect(() => {
+    if (clientType === 'new') {
+      checkForDuplicates();
+    } else {
+      setDuplicateWarnings([]);
+    }
+  }, [newContactData.first_name, newContactData.last_name, newContactData.email, clientType]);
+
+  const checkForDuplicates = async () => {
+    if (!newContactData.first_name && !newContactData.last_name && !newContactData.email) {
+      setDuplicateWarnings([]);
+      return;
+    }
+
+    try {
+      const potentialDuplicates: any[] = [];
+
+      if (newContactData.email && newContactData.email.length > 3) {
+        const { data: contactsByEmail } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email, phone, companies(name)')
+          .ilike('email', newContactData.email)
+          .limit(5);
+
+        const { data: candidatesByEmail } = await supabase
+          .from('candidates')
+          .select('id, first_name, last_name, email, phone')
+          .ilike('email', newContactData.email)
+          .eq('status', 'active')
+          .limit(5);
+
+        if (contactsByEmail) {
+          potentialDuplicates.push(...contactsByEmail.map(c => ({ ...c, type: 'contact' })));
+        }
+        if (candidatesByEmail) {
+          potentialDuplicates.push(...candidatesByEmail.map(c => ({ ...c, type: 'candidate' })));
+        }
+      }
+
+      if (newContactData.first_name && newContactData.last_name &&
+          newContactData.first_name.length > 1 && newContactData.last_name.length > 1) {
+        const { data: contactsByName } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email, phone, companies(name)')
+          .ilike('first_name', newContactData.first_name)
+          .ilike('last_name', newContactData.last_name)
+          .limit(5);
+
+        const { data: candidatesByName } = await supabase
+          .from('candidates')
+          .select('id, first_name, last_name, email, phone')
+          .ilike('first_name', newContactData.first_name)
+          .ilike('last_name', newContactData.last_name)
+          .eq('status', 'active')
+          .limit(5);
+
+        if (contactsByName) {
+          contactsByName.forEach(contact => {
+            if (!potentialDuplicates.find(d => d.id === contact.id && d.type === 'contact')) {
+              potentialDuplicates.push({ ...contact, type: 'contact' });
+            }
+          });
+        }
+        if (candidatesByName) {
+          candidatesByName.forEach(candidate => {
+            if (!potentialDuplicates.find(d => d.id === candidate.id && d.type === 'candidate')) {
+              potentialDuplicates.push({ ...candidate, type: 'candidate' });
+            }
+          });
+        }
+      }
+
+      setDuplicateWarnings(potentialDuplicates);
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (preSearchQuery.length > 2) {
+      searchClients();
+    } else {
+      setPreSearchResults([]);
+    }
+  }, [preSearchQuery]);
+
+  const searchClients = async () => {
+    try {
+      const { data: contactResults } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, email, phone, companies(name)')
+        .or(`first_name.ilike.%${preSearchQuery}%,last_name.ilike.%${preSearchQuery}%,email.ilike.%${preSearchQuery}%`)
+        .limit(10);
+
+      const { data: candidateResults } = await supabase
+        .from('candidates')
+        .select('id, first_name, last_name, email, phone')
+        .or(`first_name.ilike.%${preSearchQuery}%,last_name.ilike.%${preSearchQuery}%,email.ilike.%${preSearchQuery}%`)
+        .eq('status', 'active')
+        .limit(10);
+
+      const results = [
+        ...(contactResults || []).map(c => ({ ...c, type: 'contact' })),
+        ...(candidateResults || []).map(c => ({ ...c, type: 'candidate' })),
+      ];
+
+      setPreSearchResults(results);
+    } catch (error) {
+      console.error('Error searching clients:', error);
+    }
+  };
+
+  const useExistingClient = (client: any) => {
+    if (client.type === 'contact') {
+      setClientType('existing');
+      setBookingType('company');
+      setBookingData(prev => ({ ...prev, contact_id: client.id, company_id: client.company_id || '' }));
+    } else if (client.type === 'candidate') {
+      setClientType('existing');
+      setBookingType('individual');
+      setBookingData(prev => ({ ...prev, candidate_id: client.id }));
+    }
+    setPreSearchQuery('');
+    setPreSearchResults([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -499,6 +630,51 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
           <DialogDescription>Create a new course booking</DialogDescription>
         </DialogHeader>
 
+        <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
+          <div className="flex items-center gap-2 mb-2">
+            <Search className="h-4 w-4 text-slate-600" />
+            <Label className="text-sm font-medium">Quick Search</Label>
+          </div>
+          <Input
+            placeholder="Search by name or email to find existing clients..."
+            value={preSearchQuery}
+            onChange={(e) => setPreSearchQuery(e.target.value)}
+            className="mb-2"
+          />
+          {preSearchResults.length > 0 && (
+            <div className="space-y-1 max-h-48 overflow-y-auto mt-2">
+              {preSearchResults.map((result) => (
+                <div
+                  key={`${result.type}-${result.id}`}
+                  className="flex items-center justify-between p-2 bg-white rounded border hover:border-slate-400 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">
+                      {result.first_name} {result.last_name}
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                        {result.type === 'contact' ? 'Contact' : 'Candidate'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-600 truncate">
+                      {result.email && `${result.email}`}
+                      {result.phone && ` • ${result.phone}`}
+                      {result.companies?.name && ` • ${result.companies.name}`}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => useExistingClient(result)}
+                  >
+                    Use This Client
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <Tabs value={clientType} onValueChange={(v) => setClientType(v as 'existing' | 'new')}>
             <TabsList className="grid w-full grid-cols-2">
@@ -546,65 +722,59 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
               {bookingType === 'company' ? (
                 <>
                   <div className="space-y-2">
-                    <Label>Company</Label>
-                    <Select
+                    <Label>Company (optional)</Label>
+                    <Combobox
+                      options={[
+                        { value: 'all', label: 'All Contacts' },
+                        ...companies.map(company => ({
+                          value: company.id,
+                          label: company.name,
+                        }))
+                      ]}
                       value={bookingData.company_id}
                       onValueChange={(value) => setBookingData({ ...bookingData, company_id: value, contact_id: '' })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select company (optional)..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Contacts</SelectItem>
-                        {companies.map(company => (
-                          <SelectItem key={company.id} value={company.id}>
-                            {company.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Filter by company or view all..."
+                      searchPlaceholder="Type to search companies..."
+                      emptyMessage="No companies found."
+                    />
+                    <p className="text-xs text-slate-600">
+                      Optional: Filter contacts by company
+                    </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Contact *</Label>
-                    <Select
+                    <Combobox
+                      options={(bookingData.company_id && bookingData.company_id !== 'all' ? filteredContacts : contacts).map(contact => ({
+                        value: contact.id,
+                        label: `${contact.first_name} ${contact.last_name}`,
+                        secondary: contact.email || undefined,
+                        tertiary: contact.phone || contact.companies?.name || undefined,
+                      }))}
                       value={bookingData.contact_id}
                       onValueChange={(value) => setBookingData({ ...bookingData, contact_id: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select contact..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(bookingData.company_id && bookingData.company_id !== 'all' ? filteredContacts : contacts).map(contact => (
-                          <SelectItem key={contact.id} value={contact.id}>
-                            {contact.first_name} {contact.last_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Search and select contact..."
+                      searchPlaceholder="Type to search contacts..."
+                      emptyMessage="No contacts found."
+                    />
                   </div>
                 </>
               ) : (
                 <div className="space-y-2">
                   <Label>Candidate *</Label>
-                  <Select
+                  <Combobox
+                    options={candidates.map(candidate => ({
+                      value: candidate.id,
+                      label: `${candidate.first_name} ${candidate.last_name}`,
+                      secondary: candidate.email || undefined,
+                      tertiary: candidate.phone || undefined,
+                    }))}
                     value={bookingData.candidate_id}
                     onValueChange={(value) => setBookingData({ ...bookingData, candidate_id: value })}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select candidate..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {candidates.map(candidate => (
-                        <SelectItem key={candidate.id} value={candidate.id}>
-                          {candidate.first_name} {candidate.last_name}
-                          {candidate.email && ` (${candidate.email})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Search and select candidate..."
+                    searchPlaceholder="Type to search candidates..."
+                    emptyMessage="No candidates found."
+                  />
                   <p className="text-xs text-slate-600">
                     Select from existing candidates in the system
                   </p>
@@ -613,6 +783,47 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             </TabsContent>
 
             <TabsContent value="new" className="space-y-4 mt-4">
+              {duplicateWarnings.length > 0 && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-sm">
+                    <div className="font-medium text-amber-900 mb-2">
+                      Potential duplicate clients found ({duplicateWarnings.length})
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {duplicateWarnings.map((duplicate) => (
+                        <div
+                          key={`${duplicate.type}-${duplicate.id}`}
+                          className="flex items-center justify-between p-2 bg-white rounded border text-slate-900"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm">
+                              {duplicate.first_name} {duplicate.last_name}
+                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                                {duplicate.type === 'contact' ? 'Contact' : 'Candidate'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-600">
+                              {duplicate.email && `${duplicate.email}`}
+                              {duplicate.phone && ` • ${duplicate.phone}`}
+                              {duplicate.companies?.name && ` • ${duplicate.companies.name}`}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => useExistingClient(duplicate)}
+                          >
+                            Use This
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
                 <div className="flex items-center gap-3">
                   <input
