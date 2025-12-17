@@ -65,6 +65,7 @@ export default function BookingFormPage() {
 
   const [delegates, setDelegates] = useState<DelegateDetails[]>([]);
   const [courses, setCourses] = useState<CourseDetails[]>([]);
+  const [sameAsContact, setSameAsContact] = useState<boolean[]>([]);
 
   const [bookingForm, setBookingForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -136,6 +137,8 @@ export default function BookingFormPage() {
           postcode: '',
           selectedCourses: [],
         })));
+
+        setSameAsContact(Array(totalDelegatesNeeded).fill(false));
       }
 
       if (data.leads) {
@@ -705,7 +708,12 @@ export default function BookingFormPage() {
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id={`same_as_contact_${index}`}
+                              checked={sameAsContact[index] || false}
                               onCheckedChange={(checked) => {
+                                const newSameAsContact = [...sameAsContact];
+                                newSameAsContact[index] = checked as boolean;
+                                setSameAsContact(newSameAsContact);
+
                                 const newDelegates = [...delegates];
                                 if (checked) {
                                   newDelegates[index].name = formData.contact_name;
