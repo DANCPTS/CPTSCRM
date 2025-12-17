@@ -43,6 +43,8 @@ export default function BookingFormPage() {
 
   interface DelegateDetails {
     name: string;
+    email: string;
+    phone: string;
     national_insurance: string;
     date_of_birth: string;
     address: string;
@@ -132,6 +134,8 @@ export default function BookingFormPage() {
         const numDelegates = parseInt(data.leads.number_of_delegates?.toString() || '1');
         setDelegates(Array(numDelegates).fill(null).map(() => ({
           name: '',
+          email: '',
+          phone: '',
           national_insurance: '',
           date_of_birth: '',
           address: '',
@@ -246,7 +250,7 @@ export default function BookingFormPage() {
     for (let i = 0; i < delegates.length; i++) {
       const delegate = delegates[i];
       if (!delegate.name || !delegate.national_insurance || !delegate.date_of_birth || !delegate.address || !delegate.postcode) {
-        toast.error(`Please complete all fields for Delegate ${i + 1}`);
+        toast.error(`Please complete all required fields for Delegate ${i + 1}`);
         return;
       }
     }
@@ -561,6 +565,38 @@ export default function BookingFormPage() {
                               }}
                               required
                             />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor={`delegate_email_${index}`}>Email Address (Optional)</Label>
+                            <Input
+                              id={`delegate_email_${index}`}
+                              type="email"
+                              value={delegate.email}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].email = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
+                              placeholder="delegate@example.com"
+                            />
+                            <p className="text-xs text-slate-500">If different from booking contact</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor={`delegate_phone_${index}`}>Phone Number (Optional)</Label>
+                            <Input
+                              id={`delegate_phone_${index}`}
+                              type="tel"
+                              value={delegate.phone}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].phone = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
+                              placeholder="07123 456789"
+                            />
+                            <p className="text-xs text-slate-500">If different from booking contact</p>
                           </div>
 
                           <div className="space-y-2">
