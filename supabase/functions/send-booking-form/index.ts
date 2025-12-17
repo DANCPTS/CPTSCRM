@@ -204,13 +204,14 @@ Deno.serve(async (req: Request) => {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
           .header { background-color: #0f3d5e; color: white; padding: 30px 20px; text-align: center; }
           .logo { max-width: 250px; height: auto; margin: 0 auto 15px; display: block; }
           .content { background-color: #f9fafb; padding: 30px; }
-          .button { display: inline-block; background: linear-gradient(to right, #F9B000, #F28D00); color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
           .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
         </style>
       </head>
@@ -225,9 +226,21 @@ Deno.serve(async (req: Request) => {
             <p>Thank you for your interest in our training courses. We're pleased to send you our booking form to confirm your training reservation.</p>
             ${quoteDetailsHtml}
             <p>Please click the button below to access and complete your booking form:</p>
-            <div style="text-align: center;">
-              <a href="${formUrl}" class="button">Complete Booking Form</a>
-            </div>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0;">
+              <tr>
+                <td align="center">
+                  <table cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" bgcolor="#F28D00" style="background-color: #F28D00; border-radius: 5px; padding: 14px 28px;">
+                        <a href="${formUrl}" target="_blank" style="color: #ffffff; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-decoration: none; display: inline-block;">
+                          Complete Booking Form
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
             <p><strong>Important:</strong></p>
             <ul>
               <li>This link will expire in 7 days</li>
