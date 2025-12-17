@@ -49,9 +49,22 @@ export default function BookingFormPage() {
     date_of_birth: string;
     address: string;
     postcode: string;
+    selectedCourses: string[];
+  }
+
+  interface CourseDetails {
+    id: string;
+    course_name: string;
+    course_dates: string;
+    course_venue: string;
+    number_of_delegates: number;
+    price: number;
+    currency: string;
+    display_order: number;
   }
 
   const [delegates, setDelegates] = useState<DelegateDetails[]>([]);
+  const [courses, setCourses] = useState<CourseDetails[]>([]);
 
   const [bookingForm, setBookingForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -85,7 +98,6 @@ export default function BookingFormPage() {
       }
 
       console.log('Booking form data:', data);
-      console.log('Leads data:', data.leads);
 
       if (data.status === 'signed') {
         toast.info('This form has already been submitted');
@@ -99,11 +111,34 @@ export default function BookingFormPage() {
 
       setBookingForm(data);
 
-      if (data.leads) {
-        console.log('Lead data:', data.leads);
-        console.log('Quoted course:', data.leads.quoted_course);
-        console.log('Quoted dates:', data.leads.quoted_dates);
+      const { data: coursesData, error: coursesError } = await supabase
+        .from('booking_form_courses')
+        .select('*')
+        .eq('booking_form_id', data.id)
+        .order('display_order');
 
+      if (coursesError) {
+        console.error('Error loading courses:', coursesError);
+      } else if (coursesData && coursesData.length > 0) {
+        setCourses(coursesData);
+
+        const totalDelegatesNeeded = coursesData.reduce((sum, course) =>
+          Math.max(sum, course.number_of_delegates), 0
+        );
+
+        setDelegates(Array(totalDelegatesNeeded).fill(null).map(() => ({
+          name: '',
+          email: '',
+          phone: '',
+          national_insurance: '',
+          date_of_birth: '',
+          address: '',
+          postcode: '',
+          selectedCourses: [],
+        })));
+      }
+
+      if (data.leads) {
         const newFormData = {
           company_name: data.leads.company_name || '',
           registration_no: '',
@@ -114,33 +149,21 @@ export default function BookingFormPage() {
           address: '',
           city: '',
           postcode: '',
-          course_name: data.leads.quoted_course || '',
-          course_dates: data.leads.quoted_dates || '',
-          course_venue: data.leads.quoted_venue || '',
-          number_of_delegates: data.leads.number_of_delegates?.toString() || '',
+          course_name: coursesData?.[0]?.course_name || data.leads.quoted_course || '',
+          course_dates: coursesData?.[0]?.course_dates || data.leads.quoted_dates || '',
+          course_venue: coursesData?.[0]?.course_venue || data.leads.quoted_venue || '',
+          number_of_delegates: data.total_delegates?.toString() || data.leads.number_of_delegates?.toString() || '',
           delegate_names: '',
           po_number: '',
           special_requirements: data.leads.quote_notes || '',
           agreed_to_terms: false,
         };
 
-        console.log('Setting form data to:', newFormData);
         setFormData(newFormData);
 
         if (!data.leads.company_name) {
           setCustomerType('individual');
         }
-
-        const numDelegates = parseInt(data.leads.number_of_delegates?.toString() || '1');
-        setDelegates(Array(numDelegates).fill(null).map(() => ({
-          name: '',
-          email: '',
-          phone: '',
-          national_insurance: '',
-          date_of_birth: '',
-          address: '',
-          postcode: '',
-        })));
       }
     } catch (error) {
       console.error('Failed to load booking form:', error);
@@ -255,6 +278,16 @@ export default function BookingFormPage() {
       }
     }
 
+    if (courses.length > 0) {
+      for (const course of courses) {
+        const assignedDelegates = delegates.filter(d => d.selectedCourses.includes(course.id));
+        if (assignedDelegates.length !== course.number_of_delegates) {
+          toast.error(`Course "${course.course_name}" requires exactly ${course.number_of_delegates} delegate(s), but ${assignedDelegates.length} selected. Please adjust.`);
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -270,7 +303,7 @@ export default function BookingFormPage() {
         .from('booking_forms')
         .update({
           status: 'signed',
-          form_data: { ...formData, customer_type: customerType, delegates },
+          form_data: { ...formData, customer_type: customerType },
           signature_data: signatureData,
           signed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -283,6 +316,53 @@ export default function BookingFormPage() {
       if (updateError) {
         console.error('Update error details:', updateError);
         throw new Error(`Failed to update booking form: ${updateError.message}`);
+      }
+
+      const delegatesToInsert = delegates.map(delegate => ({
+        booking_form_id: bookingForm.id,
+        name: delegate.name,
+        email: delegate.email || null,
+        phone: delegate.phone || null,
+        national_insurance: delegate.national_insurance,
+        date_of_birth: delegate.date_of_birth,
+        address: delegate.address,
+        postcode: delegate.postcode,
+      }));
+
+      const { data: insertedDelegates, error: delegatesError } = await supabase
+        .from('booking_form_delegates')
+        .insert(delegatesToInsert)
+        .select();
+
+      if (delegatesError) {
+        console.error('Delegates insert error:', delegatesError);
+        throw new Error(`Failed to save delegates: ${delegatesError.message}`);
+      }
+
+      if (courses.length > 0 && insertedDelegates) {
+        const delegateCourseAssignments = [];
+        for (let i = 0; i < delegates.length; i++) {
+          const delegate = delegates[i];
+          const insertedDelegate = insertedDelegates[i];
+          for (const courseId of delegate.selectedCourses) {
+            delegateCourseAssignments.push({
+              booking_form_id: bookingForm.id,
+              delegate_id: insertedDelegate.id,
+              course_id: courseId,
+            });
+          }
+        }
+
+        if (delegateCourseAssignments.length > 0) {
+          const { error: assignmentsError } = await supabase
+            .from('booking_form_delegate_courses')
+            .insert(delegateCourseAssignments);
+
+          if (assignmentsError) {
+            console.error('Delegate course assignments error:', assignmentsError);
+            throw new Error(`Failed to save course assignments: ${assignmentsError.message}`);
+          }
+        }
       }
 
       if (!bookingForm.lead_id) {
@@ -503,29 +583,60 @@ export default function BookingFormPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Course Details</h3>
-                <div className="bg-gray-50 p-4 rounded-lg border mb-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1 md:col-span-2">
-                      <Label className="text-sm text-gray-600">Course Name</Label>
-                      <p className="font-medium">{formData.course_name}</p>
-                    </div>
+                <h3 className="text-lg font-semibold mb-4">{courses.length > 1 ? 'Courses Included' : 'Course Details'}</h3>
+                <div className="space-y-3 mb-4">
+                  {courses.length > 0 ? (
+                    <>
+                      {courses.map((course, index) => (
+                        <div key={course.id} className="bg-gray-50 p-4 rounded-lg border">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1 md:col-span-2">
+                              <Label className="text-sm text-gray-600">Course {courses.length > 1 ? `${index + 1}` : ''} Name</Label>
+                              <p className="font-medium">{course.course_name}</p>
+                            </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-sm text-gray-600">Course Dates</Label>
-                      <p className="font-medium">{formData.course_dates}</p>
-                    </div>
+                            <div className="space-y-1">
+                              <Label className="text-sm text-gray-600">Course Dates</Label>
+                              <p className="font-medium">{course.course_dates || 'TBC'}</p>
+                            </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-sm text-gray-600">Course Venue</Label>
-                      <p className="font-medium">{formData.course_venue}</p>
-                    </div>
+                            <div className="space-y-1">
+                              <Label className="text-sm text-gray-600">Course Venue</Label>
+                              <p className="font-medium">{course.course_venue || 'TBC'}</p>
+                            </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-sm text-gray-600">Number of Delegates</Label>
-                      <p className="font-medium">{formData.number_of_delegates}</p>
+                            <div className="space-y-1">
+                              <Label className="text-sm text-gray-600">Delegates Needed</Label>
+                              <p className="font-medium">{course.number_of_delegates}</p>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-sm text-gray-600">Price</Label>
+                              <p className="font-medium">{course.currency} {course.price.toFixed(2)} (inc. VAT)</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {courses.length > 1 && (
+                        <div className="bg-slate-800 text-white p-4 rounded-lg">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-sm text-slate-300">Total Delegates:</Label>
+                              <p className="font-bold text-lg">{courses.reduce((sum, c) => sum + c.number_of_delegates, 0)}</p>
+                            </div>
+                            <div>
+                              <Label className="text-sm text-slate-300">Total Price:</Label>
+                              <p className="font-bold text-lg">{courses[0]?.currency} {courses.reduce((sum, c) => sum + c.price, 0).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-gray-50 p-4 rounded-lg border">
+                      <p className="text-center text-gray-500">Course details will be confirmed shortly</p>
                     </div>
-                  </div>
+                  )}
                 </div>
                 {customerType === 'business' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -657,6 +768,46 @@ export default function BookingFormPage() {
                               required
                             />
                           </div>
+
+                          {courses.length > 1 && (
+                            <div className="space-y-2 md:col-span-2 border-t pt-4 mt-4">
+                              <Label className="text-base font-medium">Select Courses for this Delegate *</Label>
+                              <p className="text-xs text-slate-500 mb-2">Choose which course(s) this delegate will attend</p>
+                              <div className="space-y-2">
+                                {courses.map((course) => (
+                                  <div key={course.id} className="flex items-start space-x-3 bg-white p-3 rounded border">
+                                    <Checkbox
+                                      id={`delegate_${index}_course_${course.id}`}
+                                      checked={delegate.selectedCourses.includes(course.id)}
+                                      onCheckedChange={(checked) => {
+                                        const newDelegates = [...delegates];
+                                        if (checked) {
+                                          newDelegates[index].selectedCourses = [...newDelegates[index].selectedCourses, course.id];
+                                        } else {
+                                          newDelegates[index].selectedCourses = newDelegates[index].selectedCourses.filter(id => id !== course.id);
+                                        }
+                                        setDelegates(newDelegates);
+                                      }}
+                                    />
+                                    <div className="flex-1">
+                                      <label
+                                        htmlFor={`delegate_${index}_course_${course.id}`}
+                                        className="text-sm font-medium cursor-pointer"
+                                      >
+                                        {course.course_name}
+                                      </label>
+                                      <p className="text-xs text-slate-500">
+                                        {course.course_dates} • {course.course_venue}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="text-xs text-amber-600 mt-2">
+                                Current selections: {delegate.selectedCourses.length} course(s)
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

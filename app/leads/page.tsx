@@ -268,6 +268,15 @@ export default function LeadsPage() {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
+      const { data: proposalCourses } = await supabase
+        .from('proposal_courses')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .order('display_order');
+
+      const totalDelegates = proposalCourses?.reduce((sum, course) => sum + (course.number_of_delegates || 0), 0) || 0;
+      const totalAmount = proposalCourses?.reduce((sum, course) => sum + (course.price || 0), 0) || 0;
+
       const { data, error } = await supabase
         .from('booking_forms')
         .insert({
@@ -275,11 +284,34 @@ export default function LeadsPage() {
           token,
           status: 'pending',
           expires_at: expiresAt.toISOString(),
+          total_delegates: totalDelegates,
+          total_amount: totalAmount,
         })
         .select()
         .single();
 
       if (error) throw error;
+
+      if (proposalCourses && proposalCourses.length > 0) {
+        const coursesToInsert = proposalCourses.map((course, index) => ({
+          booking_form_id: data.id,
+          course_name: course.course_name,
+          course_dates: course.dates,
+          course_venue: course.venue,
+          number_of_delegates: course.number_of_delegates,
+          price: course.price,
+          currency: course.currency,
+          display_order: index,
+        }));
+
+        const { error: coursesError } = await supabase
+          .from('booking_form_courses')
+          .insert(coursesToInsert);
+
+        if (coursesError) {
+          console.error('Error creating booking form courses:', coursesError);
+        }
+      }
 
       const formUrl = `${window.location.origin}/booking-form/${token}`;
 

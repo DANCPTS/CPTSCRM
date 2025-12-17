@@ -111,16 +111,57 @@ Deno.serve(async (req: Request) => {
       console.error('Error fetching lead:', leadError);
     }
 
-    const quoteDetailsHtml = lead && (lead.quoted_course || lead.quoted_price) ? `
-      <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
-        <h3 style="margin-top: 0; color: #1f2937;">Quote Details</h3>
-        ${lead.quoted_course ? `<p><strong>Course:</strong> ${lead.quoted_course}</p>` : ''}
-        ${lead.quoted_price ? `<p><strong>Price:</strong> ${formatCurrency(lead.quoted_price, lead.quoted_currency || 'GBP')} (inc. VAT)</p>` : ''}
-        ${lead.quoted_dates ? `<p><strong>Proposed Dates:</strong> ${lead.quoted_dates}</p>` : ''}
-        ${lead.quoted_venue ? `<p><strong>Venue:</strong> ${lead.quoted_venue}</p>` : ''}
-        ${lead.number_of_delegates ? `<p><strong>Number of Delegates:</strong> ${lead.number_of_delegates}</p>` : ''}
-      </div>
-    ` : '';
+    const { data: proposalCourses, error: coursesError } = await supabase
+      .from('proposal_courses')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('display_order');
+
+    if (coursesError) {
+      console.error('Error fetching proposal courses:', coursesError);
+    }
+
+    let quoteDetailsHtml = '';
+
+    if (proposalCourses && proposalCourses.length > 0) {
+      const totalDelegates = proposalCourses.reduce((sum, course) => sum + (course.number_of_delegates || 0), 0);
+      const totalPrice = proposalCourses.reduce((sum, course) => sum + (course.price || 0), 0);
+      const currency = proposalCourses[0]?.currency || 'GBP';
+
+      const coursesHtml = proposalCourses.map((course, index) => `
+        <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #0f3d5e;">
+          <h4 style="margin-top: 0; color: #1f2937;">Course ${index + 1}: ${course.course_name}</h4>
+          <p style="margin: 5px 0;"><strong>Price:</strong> ${formatCurrency(course.price, course.currency || 'GBP')} (inc. VAT)</p>
+          ${course.dates ? `<p style="margin: 5px 0;"><strong>Dates:</strong> ${course.dates}</p>` : ''}
+          ${course.venue ? `<p style="margin: 5px 0;"><strong>Venue:</strong> ${course.venue}</p>` : ''}
+          <p style="margin: 5px 0;"><strong>Delegates:</strong> ${course.number_of_delegates}</p>
+        </div>
+      `).join('');
+
+      quoteDetailsHtml = `
+        <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
+          <h3 style="margin-top: 0; color: #1f2937;">${proposalCourses.length > 1 ? 'Courses in Your Proposal' : 'Quote Details'}</h3>
+          ${coursesHtml}
+          ${proposalCourses.length > 1 ? `
+            <div style="background-color: #0f3d5e; color: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
+              <p style="margin: 5px 0;"><strong>Total Delegates:</strong> ${totalDelegates}</p>
+              <p style="margin: 5px 0;"><strong>Total Price:</strong> ${formatCurrency(totalPrice, currency)} (inc. VAT)</p>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    } else if (lead && (lead.quoted_course || lead.quoted_price)) {
+      quoteDetailsHtml = `
+        <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
+          <h3 style="margin-top: 0; color: #1f2937;">Quote Details</h3>
+          ${lead.quoted_course ? `<p><strong>Course:</strong> ${lead.quoted_course}</p>` : ''}
+          ${lead.quoted_price ? `<p><strong>Price:</strong> ${formatCurrency(lead.quoted_price, lead.quoted_currency || 'GBP')} (inc. VAT)</p>` : ''}
+          ${lead.quoted_dates ? `<p><strong>Proposed Dates:</strong> ${lead.quoted_dates}</p>` : ''}
+          ${lead.quoted_venue ? `<p><strong>Venue:</strong> ${lead.quoted_venue}</p>` : ''}
+          ${lead.number_of_delegates ? `<p><strong>Number of Delegates:</strong> ${lead.number_of_delegates}</p>` : ''}
+        </div>
+      `;
+    }
 
     const emailHtml = `
       <!DOCTYPE html>

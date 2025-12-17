@@ -12,9 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { Trash2, Calendar, FileText, Sparkles } from 'lucide-react';
+import { Trash2, Calendar, FileText, Sparkles, Plus, X, GripVertical } from 'lucide-react';
 import { NotesDialog } from '@/components/notes-dialog';
 import { NotesList } from '@/components/notes-list';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,18 @@ interface LeadDialogProps {
   lead?: any;
 }
 
+interface ProposalCourse {
+  id?: string;
+  course_name: string;
+  price: string;
+  currency: string;
+  dates: string;
+  venue: string;
+  number_of_delegates: string;
+  notes: string;
+  display_order: number;
+}
+
 export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
   const { userProfile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -43,6 +56,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [notesRefresh, setNotesRefresh] = useState(0);
   const [activeTab, setActiveTab] = useState('details');
+  const [proposalCourses, setProposalCourses] = useState<ProposalCourse[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     company_name: '',
@@ -95,6 +109,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         quote_notes: lead.quote_notes || '',
       });
       setPreviousStatus(lead.status || 'new');
+      loadProposalCourses(lead.id);
     } else {
       setFormData({
         name: '',
@@ -119,6 +134,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         quote_notes: '',
       });
       setPreviousStatus('new');
+      setProposalCourses([]);
     }
   }, [lead, open, userProfile]);
 
@@ -128,6 +144,35 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       .select('id, full_name')
       .order('full_name');
     setUsers(data || []);
+  };
+
+  const loadProposalCourses = async (leadId: string) => {
+    const { data, error } = await supabase
+      .from('proposal_courses')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('display_order');
+
+    if (error) {
+      console.error('Error loading proposal courses:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      setProposalCourses(data.map(course => ({
+        id: course.id,
+        course_name: course.course_name || '',
+        price: course.price?.toString() || '',
+        currency: course.currency || 'GBP',
+        dates: course.dates || '',
+        venue: course.venue || '',
+        number_of_delegates: course.number_of_delegates?.toString() || '',
+        notes: course.notes || '',
+        display_order: course.display_order || 0,
+      })));
+    } else {
+      setProposalCourses([]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -184,6 +229,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       };
 
       const statusChangedToWon = lead && previousStatus !== 'won' && formData.status === 'won';
+      let leadId = lead?.id;
 
       if (lead) {
         const { error } = await supabase
@@ -192,13 +238,67 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
           .eq('id', lead.id);
 
         if (error) throw error;
+
+        if (proposalCourses.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('proposal_courses')
+            .delete()
+            .eq('lead_id', lead.id);
+
+          if (deleteError) throw deleteError;
+
+          const coursesToInsert = proposalCourses.map((course, index) => ({
+            lead_id: lead.id,
+            course_name: course.course_name,
+            price: parseFloat(course.price) || 0,
+            currency: course.currency,
+            dates: course.dates,
+            venue: course.venue,
+            number_of_delegates: parseInt(course.number_of_delegates) || 1,
+            notes: course.notes,
+            display_order: index,
+            created_by: userProfile?.id,
+          }));
+
+          const { error: insertError } = await supabase
+            .from('proposal_courses')
+            .insert(coursesToInsert);
+
+          if (insertError) throw insertError;
+        }
+
         toast.success('Lead updated successfully');
       } else {
-        const { error } = await supabase
+        const { data: newLead, error } = await supabase
           .from('leads')
-          .insert([dataToSave]);
+          .insert([dataToSave])
+          .select('id')
+          .single();
 
         if (error) throw error;
+        leadId = newLead.id;
+
+        if (proposalCourses.length > 0) {
+          const coursesToInsert = proposalCourses.map((course, index) => ({
+            lead_id: newLead.id,
+            course_name: course.course_name,
+            price: parseFloat(course.price) || 0,
+            currency: course.currency,
+            dates: course.dates,
+            venue: course.venue,
+            number_of_delegates: parseInt(course.number_of_delegates) || 1,
+            notes: course.notes,
+            display_order: index,
+            created_by: userProfile?.id,
+          }));
+
+          const { error: insertError } = await supabase
+            .from('proposal_courses')
+            .insert(coursesToInsert);
+
+          if (insertError) throw insertError;
+        }
+
         toast.success('Lead created successfully');
       }
 
@@ -258,6 +358,44 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const addCourse = () => {
+    setProposalCourses([
+      ...proposalCourses,
+      {
+        course_name: '',
+        price: '',
+        currency: 'GBP',
+        dates: '',
+        venue: '',
+        number_of_delegates: '1',
+        notes: '',
+        display_order: proposalCourses.length,
+      },
+    ]);
+  };
+
+  const removeCourse = (index: number) => {
+    setProposalCourses(proposalCourses.filter((_, i) => i !== index));
+  };
+
+  const updateCourse = (index: number, field: keyof ProposalCourse, value: string) => {
+    const updated = [...proposalCourses];
+    updated[index] = { ...updated[index], [field]: value };
+    setProposalCourses(updated);
+  };
+
+  const calculateTotals = () => {
+    const totalDelegates = proposalCourses.reduce(
+      (sum, course) => sum + (parseInt(course.number_of_delegates) || 0),
+      0
+    );
+    const totalPrice = proposalCourses.reduce(
+      (sum, course) => sum + (parseFloat(course.price) || 0),
+      0
+    );
+    return { totalDelegates, totalPrice };
   };
 
   return (
@@ -443,96 +581,159 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
             </TabsContent>
 
             <TabsContent value="proposal" className="space-y-4 mt-0">
-              {(formData.status === 'proposal' || formData.status === 'won') && (
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="font-semibold text-sm">Quote Details</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="quoted_course">Course Name</Label>
-                  <Input
-                    id="quoted_course"
-                    value={formData.quoted_course}
-                    onChange={(e) => setFormData({ ...formData, quoted_course: e.target.value })}
-                    placeholder="e.g., IPAF 3a & 3b Mobile Vertical"
-                  />
-                </div>
+              {(formData.status === 'proposal' || formData.status === 'won') ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-sm">Courses in Proposal</h3>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={addCourse}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Course
+                    </Button>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="quoted_price">Price + VAT</Label>
-                  <Input
-                    id="quoted_price"
-                    type="number"
-                    step="0.01"
-                    value={formData.quoted_price}
-                    onChange={(e) => setFormData({ ...formData, quoted_price: e.target.value })}
-                    placeholder="0.00"
-                  />
-                  <p className="text-xs text-gray-500">Enter the total price including VAT</p>
-                </div>
+                  {proposalCourses.length === 0 ? (
+                    <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                      <p className="text-muted-foreground mb-3">No courses added yet</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={addCourse}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add First Course
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {proposalCourses.map((course, index) => (
+                        <Card key={index} className="relative">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                <CardTitle className="text-sm">Course {index + 1}</CardTitle>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => removeCourse(index)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-2 col-span-2">
+                                <Label>Course Name</Label>
+                                <Input
+                                  value={course.course_name}
+                                  onChange={(e) => updateCourse(index, 'course_name', e.target.value)}
+                                  placeholder="e.g., IPAF 3a & 3b Mobile Vertical"
+                                />
+                              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="quoted_currency">Currency</Label>
-                  <Select value={formData.quoted_currency} onValueChange={(value) => setFormData({ ...formData, quoted_currency: value })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GBP">GBP (£)</SelectItem>
-                      <SelectItem value="EUR">EUR (€)</SelectItem>
-                      <SelectItem value="USD">USD ($)</SelectItem>
-                      <SelectItem value="PLN">PLN (zł)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                              <div className="space-y-2">
+                                <Label>Price + VAT</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={course.price}
+                                  onChange={(e) => updateCourse(index, 'price', e.target.value)}
+                                  placeholder="0.00"
+                                />
+                              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="quoted_dates">Proposed Dates</Label>
-                  <Input
-                    id="quoted_dates"
-                    value={formData.quoted_dates}
-                    onChange={(e) => setFormData({ ...formData, quoted_dates: e.target.value })}
-                    placeholder="e.g., 15-19 Jan 2025"
-                  />
-                </div>
+                              <div className="space-y-2">
+                                <Label>Currency</Label>
+                                <Select
+                                  value={course.currency}
+                                  onValueChange={(value) => updateCourse(index, 'currency', value)}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="GBP">GBP (£)</SelectItem>
+                                    <SelectItem value="EUR">EUR (€)</SelectItem>
+                                    <SelectItem value="USD">USD ($)</SelectItem>
+                                    <SelectItem value="PLN">PLN (zł)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="quoted_venue">Venue</Label>
-                  <Input
-                    id="quoted_venue"
-                    value={formData.quoted_venue}
-                    onChange={(e) => setFormData({ ...formData, quoted_venue: e.target.value })}
-                    placeholder="e.g., Client Site / Training Centre"
-                  />
-                </div>
+                              <div className="space-y-2">
+                                <Label>Proposed Dates</Label>
+                                <Input
+                                  value={course.dates}
+                                  onChange={(e) => updateCourse(index, 'dates', e.target.value)}
+                                  placeholder="e.g., 15-19 Jan 2025"
+                                />
+                              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="number_of_delegates">Number of Delegates</Label>
-                  <Input
-                    id="number_of_delegates"
-                    type="number"
-                    min="1"
-                    value={formData.number_of_delegates}
-                    onChange={(e) => setFormData({ ...formData, number_of_delegates: e.target.value })}
-                    placeholder="1"
-                  />
-                </div>
+                              <div className="space-y-2">
+                                <Label>Venue</Label>
+                                <Input
+                                  value={course.venue}
+                                  onChange={(e) => updateCourse(index, 'venue', e.target.value)}
+                                  placeholder="e.g., Client Site"
+                                />
+                              </div>
 
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="quote_notes">Quote Notes</Label>
-                  <Textarea
-                    id="quote_notes"
-                    value={formData.quote_notes}
-                    onChange={(e) => setFormData({ ...formData, quote_notes: e.target.value })}
-                    rows={2}
-                    placeholder="Additional details about the quote..."
-                  />
+                              <div className="space-y-2 col-span-2">
+                                <Label>Number of Delegates</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={course.number_of_delegates}
+                                  onChange={(e) => updateCourse(index, 'number_of_delegates', e.target.value)}
+                                  placeholder="1"
+                                />
+                              </div>
+
+                              <div className="space-y-2 col-span-2">
+                                <Label>Course Notes</Label>
+                                <Textarea
+                                  value={course.notes}
+                                  onChange={(e) => updateCourse(index, 'notes', e.target.value)}
+                                  rows={2}
+                                  placeholder="Additional details..."
+                                />
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+
+                      {proposalCourses.length > 0 && (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-4">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium">Total Delegates:</span>
+                              <span className="font-bold">{calculateTotals().totalDelegates}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm mt-2">
+                              <span className="font-medium">Total Price:</span>
+                              <span className="font-bold">
+                                {proposalCourses[0]?.currency || 'GBP'} {calculateTotals().totalPrice.toFixed(2)}
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-              )}
-              {!(formData.status === 'proposal' || formData.status === 'won') && (
+              ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>Quote details are available when status is Proposal or Won</p>
+                  <p>Proposal details are available when status is Proposal or Won</p>
                 </div>
               )}
             </TabsContent>

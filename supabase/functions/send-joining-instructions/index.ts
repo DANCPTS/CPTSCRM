@@ -139,19 +139,45 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const booking = bookings[0];
-    const company = booking.company;
-    const contact = booking.contact;
-    const candidate = booking.candidate;
-    const courseRun = booking.course_run;
-    const course = courseRun?.course;
-
-    let candidateNames = 'TBC';
-    if (candidate) {
-      candidateNames = `${candidate.first_name} ${candidate.last_name}`;
-    }
-
+    const firstBooking = bookings[0];
+    const company = firstBooking.company;
+    const contact = firstBooking.contact;
     const companyName = company?.name || 'N/A';
+
+    const coursesHtml = bookings.map(booking => {
+      const courseRun = booking.course_run;
+      const course = courseRun?.course;
+      const candidate = booking.candidate;
+
+      let candidateName = 'TBC';
+      if (candidate) {
+        candidateName = `${candidate.first_name} ${candidate.last_name}`;
+      }
+
+      return `
+        <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0f3d5e;">
+          <h3 style="color: #0f3d5e; margin-top: 0;">${course?.title || 'Training Course'}</h3>
+          <table class="info-table">
+            <tr>
+              <td>Course Date(s):</td>
+              <td>${courseRun ? formatDateRange(courseRun.start_date, courseRun.end_date) : 'TBC'}</td>
+            </tr>
+            <tr>
+              <td>Venue Location:</td>
+              <td>${courseRun?.location || 'Construction & Plant Training Services, Podington, NN29 7XA'}</td>
+            </tr>
+            <tr>
+              <td>Delegate Name:</td>
+              <td>${candidateName}</td>
+            </tr>
+            <tr>
+              <td>Purchase Order Number:</td>
+              <td>${booking.invoice_number || firstBooking.invoice_number || 'TBC'}</td>
+            </tr>
+          </table>
+        </div>
+      `;
+    }).join('');
 
     const emailHtml = `
       <!DOCTYPE html>
@@ -185,38 +211,17 @@ Deno.serve(async (req: Request) => {
                 <td>Company Name:</td>
                 <td>${companyName}</td>
               </tr>
-              <tr>
-                <td>Candidate Name (s):</td>
-                <td>${candidateNames}</td>
-              </tr>
-              <tr>
-                <td>Purchase Order Number:</td>
-                <td>${booking.invoice_number || 'TBC'}</td>
-              </tr>
             </table>
 
-            <table class="info-table">
-              <tr>
-                <td>Course Title:</td>
-                <td>${course?.title || 'TBC'}</td>
-              </tr>
-              <tr>
-                <td>Course Date (s):</td>
-                <td>${courseRun ? formatDateRange(courseRun.start_date, courseRun.end_date) : 'TBC'}</td>
-              </tr>
-              <tr>
-                <td>Start Time:</td>
-                <td>09:00</td>
-              </tr>
-              <tr>
-                <td>Venue Location:</td>
-                <td>Construction & Plant Training Services,<br>Podington, NN29 7XA</td>
-              </tr>
-              <tr>
-                <td>Site Contact:</td>
-                <td>Daniel Pawela 01234 604 151</td>
-              </tr>
-            </table>
+            <h2 style="color: #0f3d5e; margin-top: 30px;">Your Training Course${bookings.length > 1 ? 's' : ''}</h2>
+            <p style="margin-bottom: 20px;">Below are the details for ${bookings.length > 1 ? 'all your upcoming courses' : 'your upcoming course'}:</p>
+
+            ${coursesHtml}
+
+            <div style="margin: 20px 0; padding: 15px; background-color: #e6f2ff; border-radius: 5px;">
+              <p style="margin: 5px 0;"><strong>Start Time (All Courses):</strong> 09:00</p>
+              <p style="margin: 5px 0;"><strong>Site Contact:</strong> Daniel Pawela 01234 604 151</p>
+            </div>
 
             <div class="important-box">
               <h3>Important Information</h3>
@@ -279,9 +284,13 @@ Deno.serve(async (req: Request) => {
       </html>
     `;
 
+    const emailSubject = bookings.length > 1
+      ? `Joining Instructions - ${bookings.length} Training Courses`
+      : `Joining Instructions - ${firstBooking.course_run?.course?.title || 'Training Course'}`;
+
     await sendEmail(
       contact?.email || '',
-      `Joining Instructions - ${course?.title || 'Training Course'}`,
+      emailSubject,
       emailHtml
     );
 
