@@ -701,6 +701,30 @@ export default function BookingFormPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="pt-6">
+                        <div className="mb-4 pb-4 border-b border-slate-200">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`same_as_contact_${index}`}
+                              onCheckedChange={(checked) => {
+                                const newDelegates = [...delegates];
+                                if (checked) {
+                                  newDelegates[index].name = formData.contact_name;
+                                  newDelegates[index].email = formData.contact_email;
+                                  newDelegates[index].phone = formData.contact_phone;
+                                } else {
+                                  newDelegates[index].name = '';
+                                  newDelegates[index].email = '';
+                                  newDelegates[index].phone = '';
+                                }
+                                setDelegates(newDelegates);
+                              }}
+                            />
+                            <Label htmlFor={`same_as_contact_${index}`} className="text-sm font-medium cursor-pointer text-[#0f3d5e]">
+                              Same details as booking contact
+                            </Label>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2 md:col-span-2">
                             <Label htmlFor={`delegate_name_${index}`}>Full Name *</Label>
