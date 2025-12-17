@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
+import { Plus, Trash2, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 export default function BookingFormPage() {
   const params = useParams();
@@ -66,6 +67,7 @@ export default function BookingFormPage() {
   const [delegates, setDelegates] = useState<DelegateDetails[]>([]);
   const [courses, setCourses] = useState<CourseDetails[]>([]);
   const [sameAsContact, setSameAsContact] = useState<boolean[]>([]);
+  const [delegateCardRefs, setDelegateCardRefs] = useState<(HTMLDivElement | null)[]>([]);
 
   const [bookingForm, setBookingForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -127,6 +129,8 @@ export default function BookingFormPage() {
           Math.max(sum, course.number_of_delegates), 0
         );
 
+        const autoSelectCourses = coursesData.length === 1 ? [coursesData[0].id] : [];
+
         setDelegates(Array(totalDelegatesNeeded).fill(null).map(() => ({
           name: '',
           email: '',
@@ -135,7 +139,7 @@ export default function BookingFormPage() {
           date_of_birth: '',
           address: '',
           postcode: '',
-          selectedCourses: [],
+          selectedCourses: autoSelectCourses,
         })));
 
         setSameAsContact(Array(totalDelegatesNeeded).fill(false));
@@ -260,6 +264,60 @@ export default function BookingFormPage() {
     setHasSignature(false);
   };
 
+  const addDelegate = () => {
+    const newDelegate: DelegateDetails = {
+      name: '',
+      email: '',
+      phone: '',
+      national_insurance: '',
+      date_of_birth: '',
+      address: '',
+      postcode: '',
+      selectedCourses: [],
+    };
+    setDelegates([...delegates, newDelegate]);
+    setSameAsContact([...sameAsContact, false]);
+
+    setTimeout(() => {
+      const lastIndex = delegates.length;
+      if (delegateCardRefs[lastIndex]) {
+        delegateCardRefs[lastIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
+  const removeDelegate = (index: number) => {
+    if (delegates.length <= getMinimumDelegatesRequired()) {
+      toast.error(`Cannot remove delegate. At least ${getMinimumDelegatesRequired()} delegate(s) required.`);
+      return;
+    }
+
+    const newDelegates = delegates.filter((_, i) => i !== index);
+    setDelegates(newDelegates);
+
+    const newSameAsContact = sameAsContact.filter((_, i) => i !== index);
+    setSameAsContact(newSameAsContact);
+
+    toast.success('Delegate removed');
+  };
+
+  const getMinimumDelegatesRequired = () => {
+    if (courses.length === 0) return 1;
+    return Math.max(...courses.map(c => c.number_of_delegates));
+  };
+
+  const getCourseValidationStatus = (courseId: string) => {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return { status: 'unknown', assigned: 0, required: 0 };
+
+    const assigned = delegates.filter(d => d.selectedCourses.includes(courseId)).length;
+    const required = course.number_of_delegates;
+
+    if (assigned === required) return { status: 'valid', assigned, required };
+    if (assigned < required) return { status: 'insufficient', assigned, required };
+    return { status: 'excess', assigned, required };
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -279,13 +337,18 @@ export default function BookingFormPage() {
         toast.error(`Please complete all required fields for Delegate ${i + 1}`);
         return;
       }
+
+      if (courses.length > 0 && delegate.selectedCourses.length === 0) {
+        toast.error(`Please select at least one course for Delegate ${i + 1}`);
+        return;
+      }
     }
 
     if (courses.length > 0) {
       for (const course of courses) {
         const assignedDelegates = delegates.filter(d => d.selectedCourses.includes(course.id));
         if (assignedDelegates.length !== course.number_of_delegates) {
-          toast.error(`Course "${course.course_name}" requires exactly ${course.number_of_delegates} delegate(s), but ${assignedDelegates.length} selected. Please adjust.`);
+          toast.error(`Course "${course.course_name}" requires exactly ${course.number_of_delegates} delegate(s), but ${assignedDelegates.length} assigned. Please adjust the course assignments.`);
           return;
         }
       }
@@ -690,17 +753,106 @@ export default function BookingFormPage() {
                   <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
                   <h3 className="text-xl font-bold text-[#0f3d5e]">Delegate Information</h3>
                 </div>
-                <p className="text-sm text-slate-600 mb-4">Please provide details for each delegate attending the course</p>
+                <p className="text-sm text-slate-600 mb-2">Please provide details for each delegate attending the course</p>
+                {courses.length > 0 && (
+                  <p className="text-sm text-slate-600 mb-4">
+                    Select which courses each delegate will attend. You can add more delegates if needed.
+                  </p>
+                )}
+
+                {courses.length > 0 && (
+                  <Card className="mb-6 border-2 border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold text-slate-700">Course Assignment Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {courses.map((course) => {
+                          const validation = getCourseValidationStatus(course.id);
+                          return (
+                            <div
+                              key={course.id}
+                              className={`flex items-center justify-between p-3 rounded-lg border-2 ${
+                                validation.status === 'valid'
+                                  ? 'bg-green-50 border-green-200'
+                                  : validation.status === 'insufficient'
+                                  ? 'bg-amber-50 border-amber-200'
+                                  : 'bg-red-50 border-red-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                {validation.status === 'valid' && (
+                                  <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                                )}
+                                {validation.status === 'insufficient' && (
+                                  <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                                )}
+                                {validation.status === 'excess' && (
+                                  <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm text-slate-900 truncate">{course.course_name}</p>
+                                  <p className="text-xs text-slate-600">{course.course_dates} • {course.course_venue}</p>
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0 ml-3">
+                                <p className={`text-sm font-bold ${
+                                  validation.status === 'valid'
+                                    ? 'text-green-600'
+                                    : validation.status === 'insufficient'
+                                    ? 'text-amber-600'
+                                    : 'text-red-600'
+                                }`}>
+                                  {validation.assigned} / {validation.required}
+                                </p>
+                                <p className="text-xs text-slate-600">assigned</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-4 pt-3 border-t border-slate-200">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Total unique delegates:</span>
+                          <span className="font-bold text-slate-900">{delegates.length}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <div className="space-y-6">
                   {delegates.map((delegate, index) => (
-                    <Card key={index} className="border-l-4 border-[#0f3d5e] bg-gradient-to-r from-slate-50 to-white shadow-sm hover:shadow-md transition-shadow">
+                    <Card
+                      key={index}
+                      ref={(el) => {
+                        const newRefs = [...delegateCardRefs];
+                        newRefs[index] = el;
+                        if (JSON.stringify(newRefs) !== JSON.stringify(delegateCardRefs)) {
+                          setDelegateCardRefs(newRefs);
+                        }
+                      }}
+                      className="border-l-4 border-[#0f3d5e] bg-gradient-to-r from-slate-50 to-white shadow-sm hover:shadow-md transition-shadow"
+                    >
                       <CardHeader className="bg-gradient-to-r from-[#0f3d5e] to-[#1a5578] text-white">
-                        <CardTitle className="text-lg font-bold flex items-center gap-2">
-                          <span className="bg-[#F28D00] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
-                            {index + 1}
-                          </span>
-                          Delegate {index + 1}
+                        <CardTitle className="text-lg font-bold flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#F28D00] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
+                              {index + 1}
+                            </span>
+                            Delegate {index + 1}
+                          </div>
+                          {delegates.length > getMinimumDelegatesRequired() && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeDelegate(index)}
+                              className="text-white hover:bg-red-600 hover:text-white"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="pt-6">
@@ -839,42 +991,70 @@ export default function BookingFormPage() {
                             />
                           </div>
 
-                          {courses.length > 1 && (
+                          {courses.length > 0 && (
                             <div className="space-y-2 md:col-span-2 border-t pt-4 mt-4">
                               <Label className="text-base font-medium">Select Courses for this Delegate *</Label>
-                              <p className="text-xs text-slate-500 mb-2">Choose which course(s) this delegate will attend</p>
+                              <p className="text-xs text-slate-500 mb-2">
+                                {courses.length === 1
+                                  ? 'Confirm this delegate will attend the course below'
+                                  : 'Choose which course(s) this delegate will attend'
+                                }
+                              </p>
                               <div className="space-y-2">
-                                {courses.map((course) => (
-                                  <div key={course.id} className="flex items-start space-x-3 bg-white p-3 rounded border">
-                                    <Checkbox
-                                      id={`delegate_${index}_course_${course.id}`}
-                                      checked={delegate.selectedCourses.includes(course.id)}
-                                      onCheckedChange={(checked) => {
-                                        const newDelegates = [...delegates];
-                                        if (checked) {
-                                          newDelegates[index].selectedCourses = [...newDelegates[index].selectedCourses, course.id];
-                                        } else {
-                                          newDelegates[index].selectedCourses = newDelegates[index].selectedCourses.filter(id => id !== course.id);
-                                        }
-                                        setDelegates(newDelegates);
-                                      }}
-                                    />
-                                    <div className="flex-1">
-                                      <label
-                                        htmlFor={`delegate_${index}_course_${course.id}`}
-                                        className="text-sm font-medium cursor-pointer"
-                                      >
-                                        {course.course_name}
-                                      </label>
-                                      <p className="text-xs text-slate-500">
-                                        {course.course_dates} • {course.course_venue}
-                                      </p>
+                                {courses.map((course) => {
+                                  const validation = getCourseValidationStatus(course.id);
+                                  return (
+                                    <div key={course.id} className="flex items-start space-x-3 bg-white p-3 rounded border">
+                                      <Checkbox
+                                        id={`delegate_${index}_course_${course.id}`}
+                                        checked={delegate.selectedCourses.includes(course.id)}
+                                        onCheckedChange={(checked) => {
+                                          const newDelegates = [...delegates];
+                                          if (checked) {
+                                            newDelegates[index].selectedCourses = [...newDelegates[index].selectedCourses, course.id];
+                                          } else {
+                                            newDelegates[index].selectedCourses = newDelegates[index].selectedCourses.filter(id => id !== course.id);
+                                          }
+                                          setDelegates(newDelegates);
+                                        }}
+                                      />
+                                      <div className="flex-1">
+                                        <label
+                                          htmlFor={`delegate_${index}_course_${course.id}`}
+                                          className="text-sm font-medium cursor-pointer"
+                                        >
+                                          {course.course_name}
+                                        </label>
+                                        <p className="text-xs text-slate-500">
+                                          {course.course_dates} • {course.course_venue}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                          {validation.status === 'valid' && (
+                                            <span className="text-xs text-green-600 flex items-center gap-1">
+                                              <CheckCircle2 className="h-3 w-3" />
+                                              Complete ({validation.assigned}/{validation.required})
+                                            </span>
+                                          )}
+                                          {validation.status === 'insufficient' && (
+                                            <span className="text-xs text-amber-600 flex items-center gap-1">
+                                              <AlertCircle className="h-3 w-3" />
+                                              Need {validation.required - validation.assigned} more
+                                            </span>
+                                          )}
+                                          {validation.status === 'excess' && (
+                                            <span className="text-xs text-red-600 flex items-center gap-1">
+                                              <XCircle className="h-3 w-3" />
+                                              Too many ({validation.assigned}/{validation.required})
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
-                              <p className="text-xs text-amber-600 mt-2">
-                                Current selections: {delegate.selectedCourses.length} course(s)
+                              <p className="text-xs text-slate-600 mt-2 bg-slate-50 p-2 rounded">
+                                This delegate is assigned to: <span className="font-semibold">{delegate.selectedCourses.length} course(s)</span>
                               </p>
                             </div>
                           )}
@@ -882,6 +1062,18 @@ export default function BookingFormPage() {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+
+                <div className="mt-6 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addDelegate}
+                    className="border-2 border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white font-semibold"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Another Delegate
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
