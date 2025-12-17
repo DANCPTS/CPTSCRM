@@ -460,7 +460,7 @@ export default function CalendarPage() {
         .from('candidate_courses')
         .select(`
           *,
-          candidates(id, first_name, last_name, email, phone),
+          candidates(id, first_name, last_name, email, phone, date_of_birth, national_insurance_number),
           course_runs(id, start_date, end_date, location, trainer_id, tester_id, seats_total, seats_booked, training_days, test_days)
         `)
         .eq('course_run_id', session.runId)
@@ -1045,6 +1045,12 @@ export default function CalendarPage() {
                               <div className={`text-sm mt-1 ${isCancelled ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {candidateCourse.candidates?.email && <p>{candidateCourse.candidates.email}</p>}
                                 {candidateCourse.candidates?.phone && <p>{candidateCourse.candidates.phone}</p>}
+                                {candidateCourse.candidates?.date_of_birth && (
+                                  <p>DOB: {format(parseISO(candidateCourse.candidates.date_of_birth), 'MMM d, yyyy')}</p>
+                                )}
+                                {candidateCourse.candidates?.national_insurance_number && (
+                                  <p>NI: {candidateCourse.candidates.national_insurance_number}</p>
+                                )}
                                 <p className="text-xs mt-1">
                                   Enrolled: {format(parseISO(candidateCourse.enrollment_date), 'MMM d, yyyy')}
                                 </p>
