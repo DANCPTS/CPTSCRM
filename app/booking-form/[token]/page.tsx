@@ -826,9 +826,9 @@ export default function BookingFormPage() {
                     <Card
                       key={index}
                       ref={(el) => {
-                        const newRefs = [...delegateCardRefs];
-                        newRefs[index] = el;
-                        if (JSON.stringify(newRefs) !== JSON.stringify(delegateCardRefs)) {
+                        if (delegateCardRefs[index] !== el) {
+                          const newRefs = [...delegateCardRefs];
+                          newRefs[index] = el;
                           setDelegateCardRefs(newRefs);
                         }
                       }}
