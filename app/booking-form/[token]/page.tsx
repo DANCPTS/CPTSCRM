@@ -67,7 +67,7 @@ export default function BookingFormPage() {
   const [delegates, setDelegates] = useState<DelegateDetails[]>([]);
   const [courses, setCourses] = useState<CourseDetails[]>([]);
   const [sameAsContact, setSameAsContact] = useState<boolean[]>([]);
-  const [delegateCardRefs, setDelegateCardRefs] = useState<(HTMLDivElement | null)[]>([]);
+  const delegateCardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const [bookingForm, setBookingForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -280,8 +280,8 @@ export default function BookingFormPage() {
 
     setTimeout(() => {
       const lastIndex = delegates.length;
-      if (delegateCardRefs[lastIndex]) {
-        delegateCardRefs[lastIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (delegateCardRefs.current[lastIndex]) {
+        delegateCardRefs.current[lastIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 100);
   };
@@ -826,11 +826,7 @@ export default function BookingFormPage() {
                     <Card
                       key={index}
                       ref={(el) => {
-                        if (delegateCardRefs[index] !== el) {
-                          const newRefs = [...delegateCardRefs];
-                          newRefs[index] = el;
-                          setDelegateCardRefs(newRefs);
-                        }
+                        delegateCardRefs.current[index] = el;
                       }}
                       className="border-l-4 border-[#0f3d5e] bg-gradient-to-r from-slate-50 to-white shadow-sm hover:shadow-md transition-shadow"
                     >
