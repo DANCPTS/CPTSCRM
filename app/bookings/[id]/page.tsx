@@ -242,7 +242,7 @@ export default function BookingFormDetailPage() {
         ${course.price ? `
         <div class="field">
           <div class="label">Price</div>
-          <div class="value">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)} (inc. VAT)</div>
+          <div class="value">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)} + VAT</div>
         </div>
         ` : ''}
       </div>
@@ -611,7 +611,7 @@ export default function BookingFormDetailPage() {
                       {course.price && (
                         <div>
                           <div className="text-sm text-slate-500 mb-1">Price</div>
-                          <p className="font-medium text-slate-900">{course.currency || 'GBP'} {Number(course.price).toFixed(2)} (inc. VAT)</p>
+                          <p className="font-medium text-slate-900">{course.currency || 'GBP'} {Number(course.price).toFixed(2)} + VAT</p>
                         </div>
                       )}
                     </div>

@@ -168,7 +168,7 @@ Deno.serve(async (req: Request) => {
       const coursesHtml = proposalCourses.map((course, index) => `
         <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #0f3d5e;">
           <h4 style="margin-top: 0; color: #1f2937;">Course ${index + 1}: ${course.course_name}</h4>
-          <p style="margin: 5px 0;"><strong>Price:</strong> ${formatCurrency(course.price, course.currency || 'GBP')} (inc. VAT)</p>
+          <p style="margin: 5px 0;"><strong>Price:</strong> ${formatCurrency(course.price, course.currency || 'GBP')} + VAT</p>
           ${course.dates ? `<p style="margin: 5px 0;"><strong>Dates:</strong> ${course.dates}</p>` : ''}
           ${course.venue ? `<p style="margin: 5px 0;"><strong>Venue:</strong> ${course.venue}</p>` : ''}
           <p style="margin: 5px 0;"><strong>Delegates:</strong> ${course.number_of_delegates}</p>
@@ -182,7 +182,7 @@ Deno.serve(async (req: Request) => {
           ${proposalCourses.length > 1 ? `
             <div style="background-color: #0f3d5e; color: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
               <p style="margin: 5px 0;"><strong>Total Delegates:</strong> ${totalDelegates}</p>
-              <p style="margin: 5px 0;"><strong>Total Price:</strong> ${formatCurrency(totalPrice, currency)} (inc. VAT)</p>
+              <p style="margin: 5px 0;"><strong>Total Price:</strong> ${formatCurrency(totalPrice, currency)} + VAT</p>
             </div>
           ` : ''}
         </div>
@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
         <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
           <h3 style="margin-top: 0; color: #1f2937;">Quote Details</h3>
           ${lead.quoted_course ? `<p><strong>Course:</strong> ${lead.quoted_course}</p>` : ''}
-          ${lead.quoted_price ? `<p><strong>Price:</strong> ${formatCurrency(lead.quoted_price, lead.quoted_currency || 'GBP')} (inc. VAT)</p>` : ''}
+          ${lead.quoted_price ? `<p><strong>Price:</strong> ${formatCurrency(lead.quoted_price, lead.quoted_currency || 'GBP')} + VAT</p>` : ''}
           ${lead.quoted_dates ? `<p><strong>Proposed Dates:</strong> ${lead.quoted_dates}</p>` : ''}
           ${lead.quoted_venue ? `<p><strong>Venue:</strong> ${lead.quoted_venue}</p>` : ''}
           ${lead.number_of_delegates ? `<p><strong>Number of Delegates:</strong> ${lead.number_of_delegates}</p>` : ''}
