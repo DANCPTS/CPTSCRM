@@ -720,7 +720,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
                               <span className="font-bold">{calculateTotals().totalDelegates}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm mt-2">
-                              <span className="font-medium">Total Price:</span>
+                              <span className="font-medium">Total Price (inc. VAT):</span>
                               <span className="font-bold">
                                 {proposalCourses[0]?.currency || 'GBP'} {calculateTotals().totalPrice.toFixed(2)}
                               </span>
