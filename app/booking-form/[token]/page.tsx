@@ -433,10 +433,15 @@ export default function BookingFormPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading booking form...</p>
+          <img
+            src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png"
+            alt="CPTS Training"
+            className="h-20 mx-auto mb-6 animate-pulse"
+          />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-[#F28D00] mx-auto"></div>
+          <p className="mt-4 text-[#0f3d5e] font-semibold">Loading booking form...</p>
         </div>
       </div>
     );
@@ -444,30 +449,49 @@ export default function BookingFormPage() {
 
   if (!bookingForm || bookingForm.status === 'signed' || new Date(bookingForm.expires_at) < new Date()) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Form Unavailable</CardTitle>
-            <CardDescription>
-              This booking form is no longer available. Please contact us if you need assistance.
-            </CardDescription>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white p-4">
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="bg-gradient-to-r from-[#0f3d5e] to-[#1a5578] text-white text-center pb-8">
+            <img
+              src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png"
+              alt="CPTS Training"
+              className="h-16 mx-auto mb-4"
+            />
+            <CardTitle className="text-2xl">Form Unavailable</CardTitle>
           </CardHeader>
+          <CardContent className="pt-6 text-center">
+            <p className="text-slate-600">
+              This booking form is no longer available. Please contact us if you need assistance.
+            </p>
+            <div className="mt-6 p-4 bg-slate-50 rounded-lg border-l-4 border-[#F28D00]">
+              <p className="text-sm text-slate-600">
+                <strong className="text-[#0f3d5e]">Contact us:</strong><br />
+                daniel@cpts.uk
+              </p>
+            </div>
+          </CardContent>
         </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle>Training Course Booking Form</CardTitle>
-            <CardDescription>
-              Please complete this form to confirm your booking. All fields marked with * are required.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div className="bg-[#0f3d5e] rounded-t-2xl p-8 text-white text-center shadow-lg">
+          <img
+            src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png"
+            alt="CPTS Training"
+            className="h-16 mx-auto mb-4"
+          />
+          <h1 className="text-3xl font-bold mb-2">Training Course Booking Form</h1>
+          <p className="text-slate-200 text-sm">
+            Please complete this form to confirm your booking. All fields marked with * are required.
+          </p>
+        </div>
+
+        <Card className="rounded-t-none shadow-xl border-t-0">
+          <CardContent className="pt-8">
             <form onSubmit={handleSubmit} className="space-y-8">
               <div className="space-y-3 border-b pb-6">
                 <Label className="text-base font-semibold">Customer Type *</Label>
@@ -484,7 +508,10 @@ export default function BookingFormPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Contact Details</h3>
+                <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-[#F28D00]">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Contact Details</h3>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {customerType === 'business' && (
                     <>
@@ -583,12 +610,15 @@ export default function BookingFormPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">{courses.length > 1 ? 'Courses Included' : 'Course Details'}</h3>
+                <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-[#F28D00]">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">{courses.length > 1 ? 'Courses Included' : 'Course Details'}</h3>
+                </div>
                 <div className="space-y-3 mb-4">
                   {courses.length > 0 ? (
                     <>
                       {courses.map((course, index) => (
-                        <div key={course.id} className="bg-gray-50 p-4 rounded-lg border">
+                        <div key={course.id} className="bg-gradient-to-r from-slate-50 to-white p-5 rounded-lg border-l-4 border-[#F28D00] shadow-sm hover:shadow-md transition-shadow">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1 md:col-span-2">
                               <Label className="text-sm text-gray-600">Course {courses.length > 1 ? `${index + 1}` : ''} Name</Label>
@@ -612,21 +642,21 @@ export default function BookingFormPage() {
 
                             <div className="space-y-1">
                               <Label className="text-sm text-gray-600">Price</Label>
-                              <p className="font-medium">{course.currency} {course.price.toFixed(2)} (inc. VAT)</p>
+                              <p className="font-medium text-[#F28D00]">{course.currency} {course.price.toFixed(2)} + VAT</p>
                             </div>
                           </div>
                         </div>
                       ))}
                       {courses.length > 1 && (
-                        <div className="bg-slate-800 text-white p-4 rounded-lg">
-                          <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-gradient-to-r from-[#0f3d5e] to-[#1a5578] text-white p-5 rounded-lg shadow-lg">
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <Label className="text-sm text-slate-300">Total Delegates:</Label>
-                              <p className="font-bold text-lg">{courses.reduce((sum, c) => sum + c.number_of_delegates, 0)}</p>
+                              <Label className="text-sm text-slate-200 font-medium">Total Delegates:</Label>
+                              <p className="font-bold text-2xl mt-1">{courses.reduce((sum, c) => sum + c.number_of_delegates, 0)}</p>
                             </div>
                             <div>
-                              <Label className="text-sm text-slate-300">Total Price:</Label>
-                              <p className="font-bold text-lg">{courses[0]?.currency} {courses.reduce((sum, c) => sum + c.price, 0).toFixed(2)}</p>
+                              <Label className="text-sm text-slate-200 font-medium">Total Price:</Label>
+                              <p className="font-bold text-2xl mt-1 text-[#F9B000]">{courses[0]?.currency} {courses.reduce((sum, c) => sum + c.price, 0).toFixed(2)}</p>
                             </div>
                           </div>
                         </div>
@@ -653,16 +683,24 @@ export default function BookingFormPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Delegate Information</h3>
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b-2 border-[#F28D00]">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Delegate Information</h3>
+                </div>
                 <p className="text-sm text-slate-600 mb-4">Please provide details for each delegate attending the course</p>
 
                 <div className="space-y-6">
                   {delegates.map((delegate, index) => (
-                    <Card key={index} className="bg-slate-50">
-                      <CardHeader>
-                        <CardTitle className="text-base">Delegate {index + 1}</CardTitle>
+                    <Card key={index} className="border-l-4 border-[#0f3d5e] bg-gradient-to-r from-slate-50 to-white shadow-sm hover:shadow-md transition-shadow">
+                      <CardHeader className="bg-gradient-to-r from-[#0f3d5e] to-[#1a5578] text-white">
+                        <CardTitle className="text-lg font-bold flex items-center gap-2">
+                          <span className="bg-[#F28D00] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">
+                            {index + 1}
+                          </span>
+                          Delegate {index + 1}
+                        </CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2 md:col-span-2">
                             <Label htmlFor={`delegate_name_${index}`}>Full Name *</Label>
@@ -829,10 +867,13 @@ export default function BookingFormPage() {
                 </div>
               </div>
 
-              <div className="space-y-4 border-t pt-6">
-                <h3 className="text-lg font-semibold">Signature *</h3>
-                <p className="text-sm text-gray-600">Please sign in the box below using your mouse, touchpad, or finger</p>
-                <div className="border-2 border-gray-300 rounded-lg bg-white">
+              <div className="space-y-4 border-t-2 border-[#F28D00] pt-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Signature *</h3>
+                </div>
+                <p className="text-sm text-slate-600">Please sign in the box below using your mouse, touchpad, or finger</p>
+                <div className="border-2 border-[#0f3d5e] rounded-lg bg-white shadow-sm">
                   <canvas
                     ref={canvasRef}
                     width={600}
@@ -847,22 +888,25 @@ export default function BookingFormPage() {
                     onTouchEnd={stopTouchDrawing}
                   />
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={clearSignature}>
+                <Button type="button" variant="outline" size="sm" onClick={clearSignature} className="border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white">
                   Clear Signature
                 </Button>
               </div>
 
-              <div className="space-y-4 border-t pt-6">
-                <h3 className="text-lg font-semibold">Terms and Conditions</h3>
-                <div className="bg-gray-50 p-4 rounded-lg border max-h-96 overflow-y-auto text-sm space-y-3">
-                  <p className="font-semibold">Payment Terms:</p>
+              <div className="space-y-4 border-t-2 border-[#F28D00] pt-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Terms and Conditions</h3>
+                </div>
+                <div className="bg-slate-50 p-6 rounded-lg border-l-4 border-[#0f3d5e] max-h-96 overflow-y-auto text-sm space-y-3 shadow-inner">
+                  <p className="font-bold text-[#0f3d5e] text-base">Payment Terms:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Full payment is due 14 days prior to the course start date</li>
                     <li>Payment can be made by bank transfer or cheque</li>
                     <li>Purchase orders are accepted from approved accounts</li>
                   </ul>
 
-                  <p className="font-semibold mt-4">Cancellation Policy:</p>
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Cancellation Policy:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Cancellations made more than 14 days before the course: Full refund minus £50 administration fee</li>
                     <li>Cancellations made 7-14 days before the course: 50% of course fee will be charged</li>
@@ -870,21 +914,21 @@ export default function BookingFormPage() {
                     <li>Delegates may be substituted at any time without charge</li>
                   </ul>
 
-                  <p className="font-semibold mt-4">Course Changes:</p>
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Course Changes:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>We reserve the right to cancel or postpone courses due to insufficient bookings or circumstances beyond our control</li>
                     <li>In the event of cancellation by us, you will be offered an alternative date or full refund</li>
                     <li>We are not liable for any travel or accommodation costs incurred</li>
                   </ul>
 
-                  <p className="font-semibold mt-4">Liability:</p>
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Liability:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>We accept no liability for loss or damage to delegates' personal property</li>
                     <li>Delegates attend courses at their own risk</li>
                     <li>We maintain appropriate insurance cover for our training activities</li>
                   </ul>
 
-                  <p className="font-semibold mt-4">Data Protection:</p>
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Data Protection:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Your information will be held securely and used only for course administration</li>
                     <li>We will not share your details with third parties without your consent</li>
@@ -904,14 +948,31 @@ export default function BookingFormPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-4 pt-6">
-                <Button type="submit" disabled={submitting} size="lg" className="min-w-[200px]">
+              <div className="flex justify-center pt-6">
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  size="lg"
+                  className="min-w-[250px] bg-gradient-to-r from-[#F9B000] to-[#F28D00] hover:from-[#F28D00] hover:to-[#F9B000] text-white font-bold text-lg py-6 shadow-lg hover:shadow-xl transition-all"
+                >
                   {submitting ? 'Submitting...' : 'Submit Booking Form'}
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
+
+        <div className="mt-6 bg-[#0f3d5e] rounded-b-2xl p-6 text-center text-white shadow-lg">
+          <p className="text-sm text-slate-200">
+            For any questions or assistance, please contact us at{' '}
+            <a href="mailto:daniel@cpts.uk" className="text-[#F9B000] hover:text-[#F28D00] font-semibold underline">
+              daniel@cpts.uk
+            </a>
+          </p>
+          <p className="text-xs text-slate-400 mt-2">
+            &copy; {new Date().getFullYear()} CPTS Training. All rights reserved.
+          </p>
+        </div>
       </div>
     </div>
   );
