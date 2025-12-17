@@ -69,7 +69,8 @@ export default function BookingFormDetailPage() {
         .from('booking_forms')
         .select(`
           *,
-          leads(*)
+          leads(*),
+          booking_form_courses(*)
         `)
         .eq('id', bookingFormId)
         .maybeSingle();
@@ -214,30 +215,65 @@ export default function BookingFormDetailPage() {
   </div>
 
   <h2>Course Details</h2>
-  <div class="section">
-    <div class="field">
-      <div class="label">Course Name</div>
-      <div class="value">${formData.course_name || lead?.quoted_course || 'N/A'}</div>
+  ${bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0 ?
+    bookingForm.booking_form_courses.map((course: any, index: number) => `
+      <div class="section" style="${index > 0 ? 'margin-top: 20px; padding-top: 20px; border-top: 2px solid #e2e8f0;' : ''}">
+        ${bookingForm.booking_form_courses.length > 1 ? `<h3 style="margin-top: 0; color: #475569;">Course ${index + 1}</h3>` : ''}
+        <div class="field">
+          <div class="label">Course Name</div>
+          <div class="value">${course.course_name}</div>
+        </div>
+        ${course.course_dates ? `
+        <div class="field">
+          <div class="label">Course Dates</div>
+          <div class="value">${course.course_dates}</div>
+        </div>
+        ` : ''}
+        ${course.course_venue ? `
+        <div class="field">
+          <div class="label">Venue</div>
+          <div class="value">${course.course_venue}</div>
+        </div>
+        ` : ''}
+        <div class="field">
+          <div class="label">Number of Delegates</div>
+          <div class="value">${course.number_of_delegates || 'N/A'}</div>
+        </div>
+        ${course.price ? `
+        <div class="field">
+          <div class="label">Price</div>
+          <div class="value">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)} (inc. VAT)</div>
+        </div>
+        ` : ''}
+      </div>
+    `).join('') : `
+    <div class="section">
+      <div class="field">
+        <div class="label">Course Name</div>
+        <div class="value">${formData.course_name || lead?.quoted_course || 'N/A'}</div>
+      </div>
+      <div class="field">
+        <div class="label">Course Dates</div>
+        <div class="value">${formData.course_dates || lead?.quoted_dates || 'N/A'}</div>
+      </div>
+      <div class="field">
+        <div class="label">Venue</div>
+        <div class="value">${formData.course_venue || lead?.quoted_venue || 'N/A'}</div>
+      </div>
+      <div class="field">
+        <div class="label">Number of Delegates</div>
+        <div class="value">${formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</div>
+      </div>
     </div>
-    <div class="field">
-      <div class="label">Course Dates</div>
-      <div class="value">${formData.course_dates || lead?.quoted_dates || 'N/A'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Venue</div>
-      <div class="value">${formData.course_venue || lead?.quoted_venue || 'N/A'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Number of Delegates</div>
-      <div class="value">${formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</div>
-    </div>
-    ${formData.po_number ? `
+  `}
+  ${formData.po_number ? `
+  <div class="section" style="margin-top: 10px;">
     <div class="field">
       <div class="label">PO Number</div>
       <div class="value">${formData.po_number}</div>
     </div>
-    ` : ''}
   </div>
+  ` : ''}
 
   ${formData.delegates && formData.delegates.length > 0 ? `
   <h2>Delegate Details</h2>
@@ -540,29 +576,73 @@ export default function BookingFormDetailPage() {
                 Course Details
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <div className="text-sm text-slate-500 mb-1">Course Name</div>
-                <p className="font-medium text-slate-900">{formData.course_name || lead?.quoted_course || 'N/A'}</p>
-              </div>
+            <CardContent className="space-y-6">
+              {bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0 ? (
+                bookingForm.booking_form_courses.map((course: any, index: number) => (
+                  <div key={course.id} className={index > 0 ? 'pt-6 border-t' : ''}>
+                    {bookingForm.booking_form_courses.length > 1 && (
+                      <h4 className="font-semibold text-slate-900 mb-3">Course {index + 1}</h4>
+                    )}
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">Course Name</div>
+                        <p className="font-medium text-slate-900">{course.course_name}</p>
+                      </div>
 
-              <div>
-                <div className="text-sm text-slate-500 mb-1">Course Dates</div>
-                <p className="font-medium text-slate-900">{formData.course_dates || lead?.quoted_dates || 'N/A'}</p>
-              </div>
+                      {course.course_dates && (
+                        <div>
+                          <div className="text-sm text-slate-500 mb-1">Course Dates</div>
+                          <p className="font-medium text-slate-900">{course.course_dates}</p>
+                        </div>
+                      )}
 
-              <div>
-                <div className="text-sm text-slate-500 mb-1">Venue</div>
-                <p className="font-medium text-slate-900">{formData.course_venue || lead?.quoted_venue || 'N/A'}</p>
-              </div>
+                      {course.course_venue && (
+                        <div>
+                          <div className="text-sm text-slate-500 mb-1">Venue</div>
+                          <p className="font-medium text-slate-900">{course.course_venue}</p>
+                        </div>
+                      )}
 
-              <div>
-                <div className="text-sm text-slate-500 mb-1">Number of Delegates</div>
-                <p className="font-medium text-slate-900">{formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</p>
-              </div>
+                      <div>
+                        <div className="text-sm text-slate-500 mb-1">Number of Delegates</div>
+                        <p className="font-medium text-slate-900">{course.number_of_delegates || 'N/A'}</p>
+                      </div>
+
+                      {course.price && (
+                        <div>
+                          <div className="text-sm text-slate-500 mb-1">Price</div>
+                          <p className="font-medium text-slate-900">{course.currency || 'GBP'} {Number(course.price).toFixed(2)} (inc. VAT)</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">Course Name</div>
+                    <p className="font-medium text-slate-900">{formData.course_name || lead?.quoted_course || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">Course Dates</div>
+                    <p className="font-medium text-slate-900">{formData.course_dates || lead?.quoted_dates || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">Venue</div>
+                    <p className="font-medium text-slate-900">{formData.course_venue || lead?.quoted_venue || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">Number of Delegates</div>
+                    <p className="font-medium text-slate-900">{formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</p>
+                  </div>
+                </div>
+              )}
 
               {formData.po_number && (
-                <div>
+                <div className="pt-4 border-t">
                   <div className="text-sm text-slate-500 mb-1">PO Number</div>
                   <p className="font-medium text-slate-900">{formData.po_number}</p>
                 </div>

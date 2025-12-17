@@ -111,14 +111,51 @@ Deno.serve(async (req: Request) => {
       console.error('Error fetching lead:', leadError);
     }
 
-    const { data: proposalCourses, error: coursesError } = await supabase
-      .from('proposal_courses')
-      .select('*')
+    const { data: bookingForm, error: formError } = await supabase
+      .from('booking_forms')
+      .select('id')
       .eq('lead_id', leadId)
-      .order('display_order');
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (coursesError) {
-      console.error('Error fetching proposal courses:', coursesError);
+    if (formError) {
+      console.error('Error fetching booking form:', formError);
+    }
+
+    let proposalCourses = null;
+    if (bookingForm) {
+      const { data: courses, error: coursesError } = await supabase
+        .from('booking_form_courses')
+        .select('*')
+        .eq('booking_form_id', bookingForm.id)
+        .order('display_order');
+
+      if (coursesError) {
+        console.error('Error fetching booking form courses:', coursesError);
+      } else {
+        proposalCourses = courses?.map(c => ({
+          course_name: c.course_name,
+          dates: c.course_dates,
+          venue: c.course_venue,
+          number_of_delegates: c.number_of_delegates,
+          price: c.price,
+          currency: c.currency,
+        }));
+      }
+    }
+
+    if (!proposalCourses) {
+      const { data: courses, error: coursesError } = await supabase
+        .from('proposal_courses')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('display_order');
+
+      if (coursesError) {
+        console.error('Error fetching proposal courses:', coursesError);
+      }
+      proposalCourses = courses;
     }
 
     let quoteDetailsHtml = '';
