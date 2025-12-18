@@ -34,6 +34,9 @@ export default function BookingFormDetailPage() {
   const [bypassInvoice, setBypassInvoice] = useState(false);
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [savingInvoice, setSavingInvoice] = useState(false);
+  const [multiCourseDialogOpen, setMultiCourseDialogOpen] = useState(false);
+  const [selectedCourseIndex, setSelectedCourseIndex] = useState<number | null>(null);
+  const [createdBookings, setCreatedBookings] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadBookingForm();
@@ -496,8 +499,23 @@ export default function BookingFormDetailPage() {
                   );
                 }
 
+                const hasCourses = bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0;
+                const hasMultipleCourses = hasCourses && bookingForm.booking_form_courses.length > 1;
+
+                if (hasMultipleCourses) {
+                  return (
+                    <Button onClick={() => setMultiCourseDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Bookings ({bookingForm.booking_form_courses.length} courses)
+                    </Button>
+                  );
+                }
+
                 return (
-                  <Button onClick={() => setBookingDialogOpen(true)}>
+                  <Button onClick={() => {
+                    setSelectedCourseIndex(null);
+                    setBookingDialogOpen(true);
+                  }}>
                     <Plus className="mr-2 h-4 w-4" />
                     Create Booking
                   </Button>
@@ -914,13 +932,90 @@ export default function BookingFormDetailPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={multiCourseDialogOpen} onOpenChange={setMultiCourseDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Bookings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              This booking form includes {bookingForm?.booking_form_courses?.length || 0} courses. Create a booking for each course:
+            </p>
+            <div className="space-y-3">
+              {bookingForm?.booking_form_courses?.map((course: any, index: number) => (
+                <div
+                  key={course.id}
+                  className={`p-4 rounded-lg border-2 ${
+                    createdBookings[course.id]
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-slate-900">{course.course_name}</h4>
+                        {createdBookings[course.id] && (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Booking Created
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-sm text-slate-600 mt-1">
+                        {course.course_dates && <span>{course.course_dates}</span>}
+                        {course.course_venue && <span> - {course.course_venue}</span>}
+                      </div>
+                      <div className="text-sm text-slate-600">
+                        {course.number_of_delegates} delegate(s) - {course.currency || 'GBP'} {Number(course.price).toFixed(2)} + VAT
+                      </div>
+                    </div>
+                    {!createdBookings[course.id] && (
+                      <Button
+                        onClick={() => {
+                          setSelectedCourseIndex(index);
+                          setMultiCourseDialogOpen(false);
+                          setBookingDialogOpen(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Booking
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.keys(createdBookings).length === (bookingForm?.booking_form_courses?.length || 0) && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-green-800 font-medium">All bookings have been created!</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMultiCourseDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <BookingDialog
         open={bookingDialogOpen}
         onClose={async () => {
           setBookingDialogOpen(false);
+          if (selectedCourseIndex !== null && bookingForm?.booking_form_courses?.[selectedCourseIndex]) {
+            const courseId = bookingForm.booking_form_courses[selectedCourseIndex].id;
+            setCreatedBookings(prev => ({ ...prev, [courseId]: true }));
+            setMultiCourseDialogOpen(true);
+          }
           await loadBookingForm();
         }}
         prefillData={(() => {
+          const selectedCourse = selectedCourseIndex !== null && bookingForm?.booking_form_courses?.[selectedCourseIndex]
+            ? bookingForm.booking_form_courses[selectedCourseIndex]
+            : null;
+
           const delegateEmail = formData.delegates && formData.delegates.length > 0 && formData.delegates[0].email
             ? formData.delegates[0].email
             : (formData.contact_email || lead?.email);
@@ -936,9 +1031,9 @@ export default function BookingFormDetailPage() {
               ? formData.delegates[0].phone
               : (formData.contact_phone || lead?.phone),
             companyName: formData.company_name || lead?.company_name,
-            courseName: formData.course_name || lead?.quoted_course,
-            courseDates: formData.course_dates || lead?.quoted_dates,
-            numberOfDelegates: formData.number_of_delegates || lead?.number_of_delegates,
+            courseName: selectedCourse?.course_name || formData.course_name || lead?.quoted_course,
+            courseDates: selectedCourse?.course_dates || formData.course_dates || lead?.quoted_dates,
+            numberOfDelegates: selectedCourse?.number_of_delegates || formData.number_of_delegates || lead?.number_of_delegates,
             invoiceNumber: bookingForm.invoice_number,
           };
         })()}
