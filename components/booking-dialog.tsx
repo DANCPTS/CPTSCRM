@@ -75,6 +75,8 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
   });
 
   const [availableAccreditations, setAvailableAccreditations] = useState<any[]>([]);
+  const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
+  const [confirmedOverlap, setConfirmedOverlap] = useState(false);
 
   const [newContactData, setNewContactData] = useState({
     first_name: '',
@@ -570,7 +572,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
         }
       }
 
-      if (candidateId && selectedRunStartDate && selectedRunEndDate) {
+      if (candidateId && selectedRunStartDate && selectedRunEndDate && !confirmedOverlap) {
         const { data: existingBookings } = await supabase
           .from('bookings')
           .select(`
@@ -598,8 +600,8 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             if (hasOverlap) {
               const courseName = run.courses?.title || 'another course';
               const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-              toast.error(
-                `Date conflict: This candidate is already booked on "${courseName}" (${formatDate(existingStart)} - ${formatDate(existingEnd)}). Please choose different dates.`
+              setOverlapWarning(
+                `This candidate is already booked on "${courseName}" (${formatDate(existingStart)} - ${formatDate(existingEnd)}). Dates overlap with the selected course.`
               );
               setLoading(false);
               return;
@@ -680,6 +682,8 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
     setClientType('existing');
     setIsIndividual(false);
     setBookingType('company');
+    setOverlapWarning(null);
+    setConfirmedOverlap(false);
   };
 
   return (
@@ -1271,13 +1275,36 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             </div>
           </div>
 
-          <DialogFooter>
+          {overlapWarning && (
+            <Alert className="border-amber-500 bg-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                <span className="font-medium">Date Overlap Warning:</span> {overlapWarning}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create Booking'}
-            </Button>
+            {overlapWarning && !confirmedOverlap ? (
+              <Button
+                type="button"
+                variant="default"
+                className="bg-amber-600 hover:bg-amber-700"
+                onClick={() => {
+                  setConfirmedOverlap(true);
+                  setOverlapWarning(null);
+                }}
+              >
+                Proceed Anyway
+              </Button>
+            ) : (
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Creating...' : 'Create Booking'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
