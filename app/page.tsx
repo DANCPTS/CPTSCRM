@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Link from 'next/link';
-import { Calendar, CheckCircle2, TrendingUp, Users, Award, UserCheck } from 'lucide-react';
+import { Calendar, CheckCircle2, TrendingUp, Users, Award, UserCheck, Phone, AlertCircle } from 'lucide-react';
 import { format, isToday, parseISO, isBefore, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
@@ -24,6 +24,7 @@ export default function Home() {
   const [weeklyAttendees, setWeeklyAttendees] = useState<any[]>([]);
   const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [nvqMetrics, setNvqMetrics] = useState({ overdue: 0, dueToday: 0, dueThisWeek: 0 });
 
   useEffect(() => {
     loadDashboard();
@@ -73,11 +74,45 @@ export default function Home() {
       setUpcomingRuns(filteredRuns);
       setRecentLeads(leadsData?.slice(0, 5) || []);
 
-      await loadWeeklyAttendees();
+      await Promise.all([loadWeeklyAttendees(), loadNvqMetrics()]);
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadNvqMetrics = async () => {
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const weekEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+
+      const [overdueRes, todayRes, weekRes] = await Promise.all([
+        supabase
+          .from('nvq_tracking')
+          .select('*', { count: 'exact', head: true })
+          .lt('nvq_reminder_date', today)
+          .not('nvq_status', 'in', '("completed","declined","not_required")'),
+        supabase
+          .from('nvq_tracking')
+          .select('*', { count: 'exact', head: true })
+          .eq('nvq_reminder_date', today)
+          .not('nvq_status', 'in', '("completed","declined","not_required")'),
+        supabase
+          .from('nvq_tracking')
+          .select('*', { count: 'exact', head: true })
+          .gt('nvq_reminder_date', today)
+          .lte('nvq_reminder_date', weekEnd)
+          .not('nvq_status', 'in', '("completed","declined","not_required")'),
+      ]);
+
+      setNvqMetrics({
+        overdue: overdueRes.count || 0,
+        dueToday: todayRes.count || 0,
+        dueThisWeek: weekRes.count || 0,
+      });
+    } catch (error) {
+      console.error('Failed to load NVQ metrics:', error);
     }
   };
 
@@ -282,6 +317,49 @@ export default function Home() {
                 </CardContent>
               </Card>
             </div>
+
+            {(nvqMetrics.overdue > 0 || nvqMetrics.dueToday > 0 || nvqMetrics.dueThisWeek > 0) && (
+              <Link href="/nvq-reminders">
+                <Card className={`mb-8 hover:shadow-lg transition-all cursor-pointer border-l-4 ${nvqMetrics.overdue > 0 ? 'border-l-red-500 bg-red-50/50' : nvqMetrics.dueToday > 0 ? 'border-l-amber-500 bg-amber-50/50' : 'border-l-blue-500'}`}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg text-primary flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Phone className="h-5 w-5" />
+                        NVQ Follow-ups
+                      </span>
+                      {nvqMetrics.overdue > 0 && (
+                        <Badge variant="destructive" className="bg-red-600">
+                          {nvqMetrics.overdue} Overdue
+                        </Badge>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-6 text-center">
+                      <div>
+                        <div className={`text-2xl font-bold ${nvqMetrics.overdue > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                          {nvqMetrics.overdue}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Overdue</p>
+                      </div>
+                      <div>
+                        <div className={`text-2xl font-bold ${nvqMetrics.dueToday > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                          {nvqMetrics.dueToday}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Due Today</p>
+                      </div>
+                      <div>
+                        <div className="text-2xl font-bold text-blue-600">{nvqMetrics.dueThisWeek}</div>
+                        <p className="text-xs text-muted-foreground">Due This Week</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-4 text-center">
+                      Click to view and manage NVQ Level 2 upsell opportunities
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
 
             <div className="grid gap-6 md:grid-cols-2 md:items-stretch">
               <Card className="shadow-md hover:shadow-xl transition-shadow border-t-4 border-t-accent flex flex-col">

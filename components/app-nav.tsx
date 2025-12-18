@@ -21,6 +21,7 @@ import {
   Bell,
   Mail,
   UserCheck,
+  Award,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -31,7 +32,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -46,6 +47,7 @@ const navItems = [
   { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/marketing', label: 'Marketing', icon: Mail },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
+  { href: '/nvq-reminders', label: 'NVQ Follow-ups', icon: Award, hasBadge: true },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -56,10 +58,12 @@ export function AppNav() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [nvqDueCount, setNvqDueCount] = useState(0);
 
   useEffect(() => {
     if (userProfile?.id) {
       loadNotifications();
+      loadNvqDueCount();
 
       const subscription = supabase
         .channel('notifications')
@@ -77,11 +81,40 @@ export function AppNav() {
         )
         .subscribe();
 
+      const nvqSubscription = supabase
+        .channel('nvq_tracking_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'nvq_tracking',
+          },
+          () => {
+            loadNvqDueCount();
+          }
+        )
+        .subscribe();
+
       return () => {
         subscription.unsubscribe();
+        nvqSubscription.unsubscribe();
       };
     }
   }, [userProfile?.id]);
+
+  const loadNvqDueCount = async () => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const { count, error } = await supabase
+      .from('nvq_tracking')
+      .select('*', { count: 'exact', head: true })
+      .lte('nvq_reminder_date', today)
+      .not('nvq_status', 'in', '("completed","declined","not_required")');
+
+    if (!error) {
+      setNvqDueCount(count || 0);
+    }
+  };
 
   const loadNotifications = async () => {
     if (!userProfile?.id) return;
@@ -215,15 +248,16 @@ export function AppNav() {
       </div>
 
       <nav className="flex-1 space-y-2 px-3 py-6">
-        {navItems.map((item) => {
+        {navItems.map((item: any) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
+          const showBadge = item.hasBadge && nvqDueCount > 0;
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all',
+                'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-all relative',
                 isActive
                   ? 'bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-md scale-105'
                   : 'text-primary/80 hover:bg-accent/20 hover:text-accent-foreground hover:scale-102 hover:shadow-sm'
@@ -231,6 +265,14 @@ export function AppNav() {
             >
               <Icon className="h-5 w-5" />
               {item.label}
+              {showBadge && (
+                <Badge
+                  variant="destructive"
+                  className="ml-auto h-5 min-w-[20px] rounded-full p-0 flex items-center justify-center text-xs"
+                >
+                  {nvqDueCount}
+                </Badge>
+              )}
             </Link>
           );
         })}

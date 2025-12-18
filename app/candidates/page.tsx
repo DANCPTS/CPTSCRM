@@ -12,11 +12,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Search, Plus, User, FileText, GraduationCap, Upload, Trash2, Download, XCircle, Calendar } from 'lucide-react';
+import { Search, Plus, User, FileText, GraduationCap, Upload, Trash2, Download, XCircle, Calendar, Award, Phone, Mail, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { AttendanceDialog } from '@/components/attendance-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { addMonths, formatDistanceToNow, isPast, isToday, parseISO } from 'date-fns';
 
 interface Candidate {
   id: string;
@@ -57,14 +59,45 @@ interface CandidateCourse {
   grade?: string;
   certificate_number?: string;
   notes?: string;
+  requires_nvq_for_blue_card?: boolean;
   courses?: {
     title: string;
+    accreditation?: string[];
   };
   course_runs?: {
     start_date: string;
     end_date: string;
     location: string;
   };
+}
+
+interface NvqTracking {
+  id: string;
+  candidate_id: string;
+  source_candidate_course_id?: string;
+  accreditation_type: string;
+  requires_nvq: boolean;
+  red_card_expiry_date?: string;
+  nvq_status: string;
+  nvq_reminder_date: string;
+  last_contacted_date?: string;
+  notes?: string;
+  created_at: string;
+  source_course?: {
+    courses?: {
+      title: string;
+    };
+  };
+}
+
+interface NvqContactLog {
+  id: string;
+  nvq_tracking_id: string;
+  contact_method: string;
+  outcome: string;
+  notes?: string;
+  follow_up_date?: string;
+  created_at: string;
 }
 
 export default function CandidatesPage() {
@@ -88,6 +121,24 @@ export default function CandidatesPage() {
     course_id: '',
     enrollment_date: new Date().toISOString().split('T')[0],
     notes: '',
+    requires_nvq_for_blue_card: false,
+  });
+  const [nvqTracking, setNvqTracking] = useState<NvqTracking[]>([]);
+  const [nvqContactLogs, setNvqContactLogs] = useState<NvqContactLog[]>([]);
+  const [passMarkingOpen, setPassMarkingOpen] = useState(false);
+  const [selectedCourseForPass, setSelectedCourseForPass] = useState<CandidateCourse | null>(null);
+  const [passMarkingData, setPassMarkingData] = useState({
+    red_card_expiry_date: '',
+    accreditation_type: 'CPCS',
+    requires_nvq: true,
+  });
+  const [nvqContactDialogOpen, setNvqContactDialogOpen] = useState(false);
+  const [selectedNvqTracking, setSelectedNvqTracking] = useState<NvqTracking | null>(null);
+  const [nvqContactForm, setNvqContactForm] = useState({
+    contact_method: 'phone',
+    outcome: 'reached',
+    notes: '',
+    follow_up_date: '',
   });
   const [formData, setFormData] = useState({
     first_name: '',
@@ -199,6 +250,7 @@ export default function CandidatesPage() {
     });
     await loadCandidateFiles(candidate.id);
     await loadCandidateCourses(candidate.id);
+    await loadNvqTracking(candidate.id);
     setDialogOpen(true);
   };
 
@@ -221,13 +273,12 @@ export default function CandidatesPage() {
     try {
       const { data, error } = await supabase
         .from('candidate_courses')
-        .select('*, courses!course_id(title), course_runs!course_run_id(start_date, end_date, location, training_days, test_days)')
+        .select('*, courses!course_id(title, accreditation), course_runs!course_run_id(start_date, end_date, location, training_days, test_days)')
         .eq('candidate_id', candidateId)
         .order('enrollment_date', { ascending: false });
 
       if (error) throw error;
 
-      // Separate active enrollments from completed training history
       const active = data?.filter(c => c.status === 'enrolled') || [];
       const history = data?.filter(c => c.status === 'completed' || c.status === 'cancelled') || [];
 
@@ -235,6 +286,36 @@ export default function CandidatesPage() {
       setTrainingHistory(history);
     } catch (error: any) {
       console.error('Failed to load courses:', error);
+    }
+  };
+
+  const loadNvqTracking = async (candidateId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('nvq_tracking')
+        .select('*, source_course:candidate_courses!source_candidate_course_id(courses!course_id(title))')
+        .eq('candidate_id', candidateId)
+        .order('nvq_reminder_date', { ascending: true });
+
+      if (error) throw error;
+      setNvqTracking(data || []);
+    } catch (error: any) {
+      console.error('Failed to load NVQ tracking:', error);
+    }
+  };
+
+  const loadNvqContactLogs = async (nvqTrackingId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('nvq_contact_logs')
+        .select('*')
+        .eq('nvq_tracking_id', nvqTrackingId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setNvqContactLogs(data || []);
+    } catch (error: any) {
+      console.error('Failed to load contact logs:', error);
     }
   };
 
@@ -296,6 +377,7 @@ export default function CandidatesPage() {
           enrollment_date: adhocFormData.enrollment_date,
           status: 'enrolled',
           notes: adhocFormData.notes,
+          requires_nvq_for_blue_card: adhocFormData.requires_nvq_for_blue_card,
           created_by: authData.user.id,
         });
 
@@ -307,6 +389,7 @@ export default function CandidatesPage() {
         course_id: '',
         enrollment_date: new Date().toISOString().split('T')[0],
         notes: '',
+        requires_nvq_for_blue_card: false,
       });
       loadCandidateCourses(selectedCandidate.id);
     } catch (error: any) {
@@ -497,6 +580,227 @@ export default function CandidatesPage() {
     }
   };
 
+  const getNvqStatusColor = (status: string) => {
+    switch (status) {
+      case 'eligible':
+        return 'bg-blue-100 text-blue-800';
+      case 'contacted':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'interested':
+        return 'bg-orange-100 text-orange-800';
+      case 'in_progress':
+        return 'bg-cyan-100 text-cyan-800';
+      case 'enrolled':
+        return 'bg-green-100 text-green-800';
+      case 'completed':
+        return 'bg-emerald-100 text-emerald-800';
+      case 'declined':
+        return 'bg-red-100 text-red-800';
+      case 'not_required':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handlePassMarking = async (course: CandidateCourse, newResult: string) => {
+    if (newResult === 'passed' && course.requires_nvq_for_blue_card) {
+      setSelectedCourseForPass(course);
+      const accreditations = course.courses?.accreditation || [];
+      const defaultAccreditation = accreditations.includes('CPCS') ? 'CPCS' : accreditations.includes('NPORS') ? 'NPORS' : 'CPCS';
+      setPassMarkingData({
+        red_card_expiry_date: '',
+        accreditation_type: defaultAccreditation,
+        requires_nvq: defaultAccreditation === 'CPCS',
+      });
+      setPassMarkingOpen(true);
+    } else {
+      await updateCourseResult(course.id, newResult);
+    }
+  };
+
+  const updateCourseResult = async (courseId: string, result: string) => {
+    try {
+      const { error } = await supabase
+        .from('candidate_courses')
+        .update({ result })
+        .eq('id', courseId);
+
+      if (error) throw error;
+
+      toast.success('Result updated');
+      if (selectedCandidate) {
+        loadCandidateCourses(selectedCandidate.id);
+      }
+    } catch (error: any) {
+      toast.error('Failed to update result');
+    }
+  };
+
+  const handleConfirmPass = async () => {
+    if (!selectedCourseForPass || !selectedCandidate) return;
+
+    if (passMarkingData.requires_nvq && !passMarkingData.red_card_expiry_date) {
+      toast.error('Please enter the Red Card expiry date');
+      return;
+    }
+
+    try {
+      const { error: updateError } = await supabase
+        .from('candidate_courses')
+        .update({ result: 'passed' })
+        .eq('id', selectedCourseForPass.id);
+
+      if (updateError) throw updateError;
+
+      if (passMarkingData.requires_nvq) {
+        const reminderDate = addMonths(new Date(), 3);
+
+        const { data: authData } = await supabase.auth.getUser();
+
+        const { error: nvqError } = await supabase
+          .from('nvq_tracking')
+          .insert({
+            candidate_id: selectedCandidate.id,
+            source_candidate_course_id: selectedCourseForPass.id,
+            accreditation_type: passMarkingData.accreditation_type,
+            requires_nvq: true,
+            red_card_expiry_date: passMarkingData.red_card_expiry_date,
+            nvq_status: 'eligible',
+            nvq_reminder_date: format(reminderDate, 'yyyy-MM-dd'),
+            created_by: authData?.user?.id,
+          });
+
+        if (nvqError) throw nvqError;
+
+        const { error: taskError } = await supabase
+          .from('tasks')
+          .insert({
+            title: `NVQ Follow-up: ${selectedCandidate.first_name} ${selectedCandidate.last_name} - ${selectedCourseForPass.courses?.title}`,
+            description: `Follow up with candidate about NVQ Level 2 for Blue Card conversion. Red Card expires: ${passMarkingData.red_card_expiry_date}`,
+            due_date: format(reminderDate, 'yyyy-MM-dd'),
+            status: 'open',
+            assigned_to: authData?.user?.id,
+            related_to_type: 'candidate',
+            related_to_id: selectedCandidate.id,
+          });
+
+        if (taskError) {
+          console.error('Failed to create task:', taskError);
+        }
+      }
+
+      toast.success('Candidate marked as passed' + (passMarkingData.requires_nvq ? ' - NVQ follow-up scheduled' : ''));
+      setPassMarkingOpen(false);
+      loadCandidateCourses(selectedCandidate.id);
+      loadNvqTracking(selectedCandidate.id);
+    } catch (error: any) {
+      console.error('Error:', error);
+      toast.error('Failed to update');
+    }
+  };
+
+  const handleUpdateNvqStatus = async (trackingId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('nvq_tracking')
+        .update({ nvq_status: newStatus })
+        .eq('id', trackingId);
+
+      if (error) throw error;
+
+      toast.success('NVQ status updated');
+      if (selectedCandidate) {
+        loadNvqTracking(selectedCandidate.id);
+      }
+    } catch (error: any) {
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleSnoozeReminder = async (trackingId: string, days: number) => {
+    try {
+      const newDate = new Date();
+      newDate.setDate(newDate.getDate() + days);
+
+      const { error } = await supabase
+        .from('nvq_tracking')
+        .update({ nvq_reminder_date: format(newDate, 'yyyy-MM-dd') })
+        .eq('id', trackingId);
+
+      if (error) throw error;
+
+      toast.success(`Reminder snoozed for ${days} days`);
+      if (selectedCandidate) {
+        loadNvqTracking(selectedCandidate.id);
+      }
+    } catch (error: any) {
+      toast.error('Failed to snooze reminder');
+    }
+  };
+
+  const handleLogContact = async () => {
+    if (!selectedNvqTracking) return;
+
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+
+      const { error: logError } = await supabase
+        .from('nvq_contact_logs')
+        .insert({
+          nvq_tracking_id: selectedNvqTracking.id,
+          contact_method: nvqContactForm.contact_method,
+          outcome: nvqContactForm.outcome,
+          notes: nvqContactForm.notes,
+          follow_up_date: nvqContactForm.follow_up_date || null,
+          created_by: authData?.user?.id,
+        });
+
+      if (logError) throw logError;
+
+      const updateData: any = {
+        last_contacted_date: format(new Date(), 'yyyy-MM-dd'),
+      };
+
+      if (nvqContactForm.outcome === 'interested') {
+        updateData.nvq_status = 'interested';
+      } else if (nvqContactForm.outcome === 'enrolled') {
+        updateData.nvq_status = 'enrolled';
+      } else if (nvqContactForm.outcome === 'not_interested') {
+        updateData.nvq_status = 'declined';
+      } else if (selectedNvqTracking.nvq_status === 'eligible') {
+        updateData.nvq_status = 'contacted';
+      }
+
+      if (nvqContactForm.follow_up_date) {
+        updateData.nvq_reminder_date = nvqContactForm.follow_up_date;
+      }
+
+      const { error: updateError } = await supabase
+        .from('nvq_tracking')
+        .update(updateData)
+        .eq('id', selectedNvqTracking.id);
+
+      if (updateError) throw updateError;
+
+      toast.success('Contact logged');
+      setNvqContactDialogOpen(false);
+      setNvqContactForm({
+        contact_method: 'phone',
+        outcome: 'reached',
+        notes: '',
+        follow_up_date: '',
+      });
+
+      if (selectedCandidate) {
+        loadNvqTracking(selectedCandidate.id);
+      }
+    } catch (error: any) {
+      console.error('Error:', error);
+      toast.error('Failed to log contact');
+    }
+  };
+
   return (
     <AppShell>
       <div className="p-8">
@@ -592,7 +896,7 @@ export default function CandidatesPage() {
             </DialogHeader>
 
             <Tabs defaultValue="details" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="details">
                   <User className="h-4 w-4 mr-2" />
                   Details
@@ -600,6 +904,15 @@ export default function CandidatesPage() {
                 <TabsTrigger value="courses" disabled={!selectedCandidate}>
                   <GraduationCap className="h-4 w-4 mr-2" />
                   Courses
+                </TabsTrigger>
+                <TabsTrigger value="nvq" disabled={!selectedCandidate}>
+                  <Award className="h-4 w-4 mr-2" />
+                  NVQ Status
+                  {nvqTracking.length > 0 && (
+                    <Badge className="ml-1.5 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs bg-blue-500">
+                      {nvqTracking.length}
+                    </Badge>
+                  )}
                 </TabsTrigger>
                 <TabsTrigger value="history" disabled={!selectedCandidate}>
                   <Calendar className="h-4 w-4 mr-2" />
@@ -807,30 +1120,18 @@ export default function CandidatesPage() {
                                 <Badge>{course.status}</Badge>
                                 <select
                                   value={course.result || 'pending'}
-                                  onChange={async (e) => {
-                                    const newResult = e.target.value;
-                                    try {
-                                      const { error } = await supabase
-                                        .from('candidate_courses')
-                                        .update({ result: newResult })
-                                        .eq('id', course.id);
-
-                                      if (error) throw error;
-
-                                      toast.success('Result updated');
-                                      if (selectedCandidate) {
-                                        loadCandidateCourses(selectedCandidate.id);
-                                      }
-                                    } catch (error: any) {
-                                      toast.error('Failed to update result');
-                                    }
-                                  }}
+                                  onChange={(e) => handlePassMarking(course, e.target.value)}
                                   className="text-sm border rounded-md px-2 py-1"
                                 >
                                   <option value="pending">Pending</option>
                                   <option value="passed">Passed</option>
                                   <option value="failed">Failed</option>
                                 </select>
+                                {course.requires_nvq_for_blue_card && (
+                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                    NVQ Required
+                                  </Badge>
+                                )}
                               </div>
                               <div className="flex gap-1">
                                 <Button
@@ -861,6 +1162,165 @@ export default function CandidatesPage() {
                         </CardContent>
                       </Card>
                     ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="nvq" className="mt-4">
+                {nvqTracking.length === 0 ? (
+                  <div className="text-center py-12 text-slate-600">
+                    <Award className="h-12 w-12 mx-auto mb-4 text-slate-400" />
+                    <p>No NVQ tracking records</p>
+                    <p className="text-sm text-slate-500 mt-2">
+                      NVQ tracking is automatically created when marking candidates as passed on courses requiring NVQ for Blue Card.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="text-sm text-slate-600 mb-4">
+                      Track NVQ Level 2 progress for Blue Card conversions
+                    </div>
+                    {nvqTracking.map(tracking => {
+                      const reminderDate = parseISO(tracking.nvq_reminder_date);
+                      const isOverdue = isPast(reminderDate) && !isToday(reminderDate);
+                      const isDueToday = isToday(reminderDate);
+                      const expiryDate = tracking.red_card_expiry_date ? parseISO(tracking.red_card_expiry_date) : null;
+
+                      return (
+                        <Card
+                          key={tracking.id}
+                          className={`border-l-4 ${
+                            isOverdue ? 'border-l-red-500 bg-red-50/50' :
+                            isDueToday ? 'border-l-amber-500 bg-amber-50/50' :
+                            'border-l-blue-500'
+                          }`}
+                        >
+                          <CardContent className="pt-6">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold">
+                                    {tracking.source_course?.courses?.title || 'Course'}
+                                  </h4>
+                                  <Badge className={getNvqStatusColor(tracking.nvq_status)}>
+                                    {tracking.nvq_status.replace('_', ' ')}
+                                  </Badge>
+                                  <Badge variant="outline">
+                                    {tracking.accreditation_type}
+                                  </Badge>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 text-sm text-slate-600 mt-3">
+                                  {expiryDate && (
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="h-4 w-4 text-slate-400" />
+                                      <div>
+                                        <span className="font-medium">Red Card Expires:</span>{' '}
+                                        {format(expiryDate, 'dd/MM/yyyy')}
+                                        <span className={`ml-2 text-xs ${isPast(expiryDate) ? 'text-red-600' : 'text-slate-500'}`}>
+                                          ({formatDistanceToNow(expiryDate, { addSuffix: true })})
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center gap-2">
+                                    <AlertCircle className={`h-4 w-4 ${isOverdue ? 'text-red-500' : isDueToday ? 'text-amber-500' : 'text-blue-500'}`} />
+                                    <div>
+                                      <span className="font-medium">Next Reminder:</span>{' '}
+                                      <span className={isOverdue ? 'text-red-600 font-semibold' : isDueToday ? 'text-amber-600 font-semibold' : ''}>
+                                        {format(reminderDate, 'dd/MM/yyyy')}
+                                        {isOverdue && ' (Overdue)'}
+                                        {isDueToday && ' (Today)'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {tracking.last_contacted_date && (
+                                    <div className="flex items-center gap-2">
+                                      <Phone className="h-4 w-4 text-slate-400" />
+                                      <div>
+                                        <span className="font-medium">Last Contact:</span>{' '}
+                                        {format(parseISO(tracking.last_contacted_date), 'dd/MM/yyyy')}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {tracking.notes && (
+                                  <div className="mt-3 text-sm text-slate-600 bg-slate-100 p-2 rounded">
+                                    {tracking.notes}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedNvqTracking(tracking);
+                                    setNvqContactDialogOpen(true);
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <Phone className="h-4 w-4 mr-1" />
+                                  Log Contact
+                                </Button>
+
+                                <Select
+                                  value={tracking.nvq_status}
+                                  onValueChange={(value) => handleUpdateNvqStatus(tracking.id, value)}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue placeholder="Status" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="eligible">Eligible</SelectItem>
+                                    <SelectItem value="contacted">Contacted</SelectItem>
+                                    <SelectItem value="interested">Interested</SelectItem>
+                                    <SelectItem value="in_progress">In Progress</SelectItem>
+                                    <SelectItem value="enrolled">Enrolled</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                    <SelectItem value="declined">Declined</SelectItem>
+                                    <SelectItem value="not_required">Not Required</SelectItem>
+                                  </SelectContent>
+                                </Select>
+
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleSnoozeReminder(tracking.id, 7)}
+                                    className="text-xs px-2"
+                                    title="Snooze 1 week"
+                                  >
+                                    +7d
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleSnoozeReminder(tracking.id, 14)}
+                                    className="text-xs px-2"
+                                    title="Snooze 2 weeks"
+                                  >
+                                    +14d
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleSnoozeReminder(tracking.id, 30)}
+                                    className="text-xs px-2"
+                                    title="Snooze 1 month"
+                                  >
+                                    +30d
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </TabsContent>
@@ -1069,6 +1529,27 @@ export default function CandidatesPage() {
                 />
               </div>
 
+              <div className="flex items-center space-x-2 border-t pt-4">
+                <Checkbox
+                  id="requires_nvq"
+                  checked={adhocFormData.requires_nvq_for_blue_card}
+                  onCheckedChange={(checked) =>
+                    setAdhocFormData({ ...adhocFormData, requires_nvq_for_blue_card: checked as boolean })
+                  }
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label
+                    htmlFor="requires_nvq"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Requires NVQ for Blue Card
+                  </Label>
+                  <p className="text-xs text-slate-500">
+                    Check this for CPCS courses (always required) or NPORS courses if the candidate wants the CSCS logo
+                  </p>
+                </div>
+              </div>
+
               <div className="flex gap-2 pt-4">
                 <Button onClick={handleAdhocEnrollment} className="flex-1">
                   Enroll Candidate
@@ -1076,6 +1557,215 @@ export default function CandidatesPage() {
                 <Button
                   variant="outline"
                   onClick={() => setAdhocEnrollmentOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={passMarkingOpen} onOpenChange={setPassMarkingOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                Mark as Passed - NVQ Details
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-slate-600">
+                This course requires NVQ Level 2 for Blue Card conversion. Please provide the Red Card details for follow-up scheduling.
+              </p>
+
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm font-medium text-blue-800">
+                  Course: {selectedCourseForPass?.courses?.title}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Candidate: {selectedCandidate?.first_name} {selectedCandidate?.last_name}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Accreditation Type</Label>
+                <Select
+                  value={passMarkingData.accreditation_type}
+                  onValueChange={(value) => setPassMarkingData({
+                    ...passMarkingData,
+                    accreditation_type: value,
+                    requires_nvq: value === 'CPCS',
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CPCS">CPCS (NVQ always required)</SelectItem>
+                    <SelectItem value="NPORS">NPORS (NVQ optional for CSCS logo)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {passMarkingData.accreditation_type === 'NPORS' && (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="requires_nvq_pass"
+                    checked={passMarkingData.requires_nvq}
+                    onCheckedChange={(checked) =>
+                      setPassMarkingData({ ...passMarkingData, requires_nvq: checked as boolean })
+                    }
+                  />
+                  <Label htmlFor="requires_nvq_pass" className="cursor-pointer">
+                    Candidate wants CSCS logo (requires NVQ)
+                  </Label>
+                </div>
+              )}
+
+              {passMarkingData.requires_nvq && (
+                <div className="space-y-2">
+                  <Label htmlFor="red_card_expiry">Red Card Expiry Date *</Label>
+                  <Input
+                    id="red_card_expiry"
+                    type="date"
+                    value={passMarkingData.red_card_expiry_date}
+                    onChange={(e) => setPassMarkingData({ ...passMarkingData, red_card_expiry_date: e.target.value })}
+                  />
+                  <p className="text-xs text-slate-500">
+                    This date will be used to track when the candidate needs to complete their NVQ for Blue Card conversion.
+                  </p>
+                </div>
+              )}
+
+              {passMarkingData.requires_nvq && (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="text-sm text-amber-800">
+                    <strong>Reminder:</strong> A follow-up task will be created for 3 months from today to contact this candidate about NVQ Level 2 enrollment.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-4">
+                <Button onClick={handleConfirmPass} className="flex-1 bg-green-600 hover:bg-green-700">
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Confirm Pass
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setPassMarkingOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={nvqContactDialogOpen} onOpenChange={setNvqContactDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Phone className="h-5 w-5 text-blue-600" />
+                Log NVQ Contact
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {selectedNvqTracking && (
+                <div className="p-3 bg-slate-50 rounded-lg border">
+                  <p className="text-sm font-medium">
+                    {selectedCandidate?.first_name} {selectedCandidate?.last_name}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    {selectedNvqTracking.source_course?.courses?.title} ({selectedNvqTracking.accreditation_type})
+                  </p>
+                  {selectedCandidate?.phone && (
+                    <p className="text-xs text-slate-600 mt-1">
+                      Phone: {selectedCandidate.phone}
+                    </p>
+                  )}
+                  {selectedCandidate?.email && (
+                    <p className="text-xs text-slate-600">
+                      Email: {selectedCandidate.email}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Contact Method</Label>
+                  <Select
+                    value={nvqContactForm.contact_method}
+                    onValueChange={(value) => setNvqContactForm({ ...nvqContactForm, contact_method: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="phone">Phone Call</SelectItem>
+                      <SelectItem value="email">Email</SelectItem>
+                      <SelectItem value="sms">SMS</SelectItem>
+                      <SelectItem value="in_person">In Person</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Outcome</Label>
+                  <Select
+                    value={nvqContactForm.outcome}
+                    onValueChange={(value) => setNvqContactForm({ ...nvqContactForm, outcome: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reached">Reached - General</SelectItem>
+                      <SelectItem value="interested">Interested in NVQ</SelectItem>
+                      <SelectItem value="enrolled">Enrolled in NVQ</SelectItem>
+                      <SelectItem value="callback_requested">Callback Requested</SelectItem>
+                      <SelectItem value="no_answer">No Answer</SelectItem>
+                      <SelectItem value="voicemail">Left Voicemail</SelectItem>
+                      <SelectItem value="wrong_number">Wrong Number</SelectItem>
+                      <SelectItem value="not_interested">Not Interested</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contact_notes">Notes</Label>
+                <Textarea
+                  id="contact_notes"
+                  placeholder="Details of the conversation..."
+                  value={nvqContactForm.notes}
+                  onChange={(e) => setNvqContactForm({ ...nvqContactForm, notes: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="follow_up_date">Next Follow-up Date (optional)</Label>
+                <Input
+                  id="follow_up_date"
+                  type="date"
+                  value={nvqContactForm.follow_up_date}
+                  onChange={(e) => setNvqContactForm({ ...nvqContactForm, follow_up_date: e.target.value })}
+                />
+                <p className="text-xs text-slate-500">
+                  If set, this will update the reminder date for this NVQ tracking record.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button onClick={handleLogContact} className="flex-1">
+                  Log Contact
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setNvqContactDialogOpen(false)}
                 >
                   Cancel
                 </Button>
