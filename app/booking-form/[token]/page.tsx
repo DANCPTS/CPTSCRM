@@ -365,25 +365,6 @@ export default function BookingFormPage() {
       console.log('Submitting booking form with token:', token);
       console.log('Form data:', formData);
 
-      const { data: updateData, error: updateError } = await supabase
-        .from('booking_forms')
-        .update({
-          status: 'signed',
-          form_data: { ...formData, customer_type: customerType },
-          signature_data: signatureData,
-          signed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('token', token)
-        .select();
-
-      console.log('Update result:', { updateData, updateError });
-
-      if (updateError) {
-        console.error('Update error details:', updateError);
-        throw new Error(`Failed to update booking form: ${updateError.message}`);
-      }
-
       const delegatesToInsert = delegates.map(delegate => ({
         booking_form_id: bookingForm.id,
         name: delegate.name,
@@ -429,6 +410,25 @@ export default function BookingFormPage() {
             throw new Error(`Failed to save course assignments: ${assignmentsError.message}`);
           }
         }
+      }
+
+      const { data: updateData, error: updateError } = await supabase
+        .from('booking_forms')
+        .update({
+          status: 'signed',
+          form_data: { ...formData, customer_type: customerType },
+          signature_data: signatureData,
+          signed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('token', token)
+        .select();
+
+      console.log('Update result:', { updateData, updateError });
+
+      if (updateError) {
+        console.error('Update error details:', updateError);
+        throw new Error(`Failed to update booking form: ${updateError.message}`);
       }
 
       if (!bookingForm.lead_id) {
