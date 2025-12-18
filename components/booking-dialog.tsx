@@ -548,6 +548,66 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
         courseRunId = newRun.id;
       }
 
+      let selectedRunStartDate: string;
+      let selectedRunEndDate: string;
+
+      if (isOtherRun) {
+        selectedRunStartDate = newRunData.start_date;
+        selectedRunEndDate = newRunData.end_date || newRunData.start_date;
+      } else {
+        const selectedRun = courseRuns.find(r => r.id === courseRunId);
+        if (selectedRun) {
+          selectedRunStartDate = selectedRun.start_date;
+          selectedRunEndDate = selectedRun.end_date;
+        } else {
+          const { data: runData } = await supabase
+            .from('course_runs')
+            .select('start_date, end_date')
+            .eq('id', courseRunId)
+            .maybeSingle();
+          selectedRunStartDate = runData?.start_date;
+          selectedRunEndDate = runData?.end_date;
+        }
+      }
+
+      if (candidateId && selectedRunStartDate && selectedRunEndDate) {
+        const { data: existingBookings } = await supabase
+          .from('bookings')
+          .select(`
+            id,
+            status,
+            course_run_id,
+            course_runs(start_date, end_date, courses(title))
+          `)
+          .eq('candidate_id', candidateId)
+          .neq('status', 'cancelled');
+
+        if (existingBookings && existingBookings.length > 0) {
+          const newStart = new Date(selectedRunStartDate);
+          const newEnd = new Date(selectedRunEndDate);
+
+          for (const booking of existingBookings) {
+            const run = booking.course_runs as any;
+            if (!run?.start_date || !run?.end_date) continue;
+
+            const existingStart = new Date(run.start_date);
+            const existingEnd = new Date(run.end_date);
+
+            const hasOverlap = newStart <= existingEnd && newEnd >= existingStart;
+
+            if (hasOverlap) {
+              const courseName = run.courses?.title || 'another course';
+              const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+              toast.error(
+                `Date conflict: This candidate is already booked on "${courseName}" (${formatDate(existingStart)} - ${formatDate(existingEnd)}). Please choose different dates.`
+              );
+              setLoading(false);
+              return;
+            }
+          }
+        }
+      }
+
       const { error: bookingError } = await supabase
         .from('bookings')
         .insert([
