@@ -177,8 +177,7 @@ Deno.serve(async (req: Request) => {
       `).join('');
 
       const allVatExempt = proposalCourses.every(c => c.vat_exempt);
-      const someVatExempt = proposalCourses.some(c => c.vat_exempt);
-      const vatSuffix = allVatExempt ? '' : someVatExempt ? ' (Mixed VAT)' : ' + VAT';
+      const vatSuffix = allVatExempt ? '' : ' + VAT';
 
       quoteDetailsHtml = `
         <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
