@@ -61,7 +61,22 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
     certificate_no: '',
     vat_exempt: false,
     payment_link: '',
+    start_time: '08:00',
   });
+
+  const startTimeOptions = [
+    { value: '06:00', label: '6:00 AM' },
+    { value: '06:30', label: '6:30 AM' },
+    { value: '07:00', label: '7:00 AM' },
+    { value: '07:30', label: '7:30 AM' },
+    { value: '08:00', label: '8:00 AM' },
+    { value: '08:30', label: '8:30 AM' },
+    { value: '09:00', label: '9:00 AM' },
+    { value: '09:30', label: '9:30 AM' },
+    { value: '10:00', label: '10:00 AM' },
+    { value: '10:30', label: '10:30 AM' },
+    { value: '11:00', label: '11:00 AM' },
+  ];
 
   const [isOtherCourse, setIsOtherCourse] = useState(false);
   const [newCourseData, setNewCourseData] = useState({
@@ -634,6 +649,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             certificate_no: bookingData.certificate_no || null,
             lead_id: prefillData?.leadId || null,
             invoice_sent: prefillData?.invoiceSent || false,
+            start_time: bookingData.start_time || '08:00',
           },
         ]);
 
@@ -664,6 +680,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
       certificate_no: '',
       vat_exempt: false,
       payment_link: '',
+      start_time: '08:00',
     });
     setNewContactData({
       first_name: '',
@@ -1279,6 +1296,26 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="start_time">Start Time</Label>
+                <Select
+                  value={bookingData.start_time}
+                  onValueChange={(value) => setBookingData({ ...bookingData, start_time: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select start time..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {startTimeOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">Course start time for joining instructions</p>
               </div>
 
               {bookingData.amount && (

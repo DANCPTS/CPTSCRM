@@ -72,17 +72,28 @@ function formatDate(date: string): string {
 function formatDateRange(startDate: string, endDate: string): string {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  
+
   if (start.toDateString() === end.toDateString()) {
     return formatDate(startDate);
   }
-  
+
   const startDay = start.getDate();
   const endDay = end.getDate();
   const month = end.toLocaleDateString('en-GB', { month: 'short' });
   const year = end.getFullYear();
-  
+
   return `${startDay} – ${endDay} ${month} ${year}`;
+}
+
+function formatStartTime(timeString: string | null): string {
+  if (!timeString) return '8:00 AM';
+
+  const [hours, minutes] = timeString.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes === 0 ? '' : `:${minutes.toString().padStart(2, '0')}`;
+
+  return `${displayHours}${displayMinutes} ${period}`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -148,6 +159,7 @@ Deno.serve(async (req: Request) => {
       const courseRun = booking.course_run;
       const course = courseRun?.course;
       const candidate = booking.candidate;
+      const startTime = formatStartTime(booking.start_time);
 
       let candidateName = 'TBC';
       if (candidate) {
@@ -161,6 +173,10 @@ Deno.serve(async (req: Request) => {
             <tr>
               <td>Course Date(s):</td>
               <td>${courseRun ? formatDateRange(courseRun.start_date, courseRun.end_date) : 'TBC'}</td>
+            </tr>
+            <tr>
+              <td>Start Time:</td>
+              <td><strong>${startTime}</strong></td>
             </tr>
             <tr>
               <td>Venue Location:</td>
@@ -219,7 +235,6 @@ Deno.serve(async (req: Request) => {
             ${coursesHtml}
 
             <div style="margin: 20px 0; padding: 15px; background-color: #e6f2ff; border-radius: 5px;">
-              <p style="margin: 5px 0;"><strong>Start Time (All Courses):</strong> 09:00</p>
               <p style="margin: 5px 0;"><strong>Site Contact:</strong> Daniel Pawela 01234 604 151</p>
             </div>
 

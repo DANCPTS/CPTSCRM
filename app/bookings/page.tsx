@@ -114,6 +114,17 @@ export default function BookingsPage() {
                         {booking.course_runs?.courses?.title}
                         {' • '}
                         {booking.course_runs && format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy')}
+                        {booking.start_time && (
+                          <span className="text-slate-500">
+                            {' @ '}
+                            {(() => {
+                              const [h, m] = booking.start_time.split(':').map(Number);
+                              const period = h >= 12 ? 'PM' : 'AM';
+                              const displayH = h % 12 || 12;
+                              return m === 0 ? `${displayH} ${period}` : `${displayH}:${m.toString().padStart(2, '0')} ${period}`;
+                            })()}
+                          </span>
+                        )}
                         {' • '}
                         £{(booking.net_amount || booking.amount || 0).toFixed(2)}
                         {!booking.vat_exempt && (
