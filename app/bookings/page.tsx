@@ -104,7 +104,10 @@ export default function BookingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h3 className="font-semibold mb-1">
-                        {booking.contacts?.first_name} {booking.contacts?.last_name}
+                        {booking.candidates
+                          ? `${booking.candidates.first_name} ${booking.candidates.last_name}`
+                          : `${booking.contacts?.first_name || ''} ${booking.contacts?.last_name || ''}`
+                        }
                         {booking.companies && ` - ${booking.companies.name}`}
                       </h3>
                       <p className="text-sm text-slate-600">
@@ -156,7 +159,10 @@ export default function BookingsPage() {
             <AlertDialogDescription>
               Are you sure you want to cancel this booking for{' '}
               <strong>
-                {bookingToCancel?.contacts?.first_name} {bookingToCancel?.contacts?.last_name}
+                {bookingToCancel?.candidates
+                  ? `${bookingToCancel.candidates.first_name} ${bookingToCancel.candidates.last_name}`
+                  : `${bookingToCancel?.contacts?.first_name || ''} ${bookingToCancel?.contacts?.last_name || ''}`
+                }
               </strong>
               ? This will free up a seat on the course.
             </AlertDialogDescription>
