@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, Plus, Trash2, CreditCard as Edit2, X, Users, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, CreditCard as Edit2, X, Users, Settings, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -1019,9 +1020,14 @@ export default function CalendarPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <h4 className={`font-semibold ${isCancelled ? 'text-slate-500 line-through' : ''}`}>
+                                <Link
+                                  href={`/candidates?id=${candidateCourse.candidates?.id}`}
+                                  className={`font-semibold hover:underline flex items-center gap-1 ${isCancelled ? 'text-slate-500 line-through' : 'text-blue-600 hover:text-blue-800'}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   {candidateCourse.candidates?.first_name} {candidateCourse.candidates?.last_name}
-                                </h4>
+                                  <ExternalLink className="h-3 w-3" />
+                                </Link>
                                 {isCancelled ? (
                                   <Badge variant="secondary" className="bg-slate-400 text-white">
                                     Cancelled
