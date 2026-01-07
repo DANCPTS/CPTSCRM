@@ -31,6 +31,9 @@ interface Candidate {
   city?: string;
   postcode?: string;
   national_insurance_number?: string;
+  citb_hse_number?: string;
+  cpcs_card_number?: string;
+  npors_card_number?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
   notes?: string;
@@ -150,6 +153,9 @@ export default function CandidatesPage() {
     city: '',
     postcode: '',
     national_insurance_number: '',
+    citb_hse_number: '',
+    cpcs_card_number: '',
+    npors_card_number: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
     notes: '',
@@ -223,6 +229,9 @@ export default function CandidatesPage() {
       city: '',
       postcode: '',
       national_insurance_number: '',
+      citb_hse_number: '',
+      cpcs_card_number: '',
+      npors_card_number: '',
       emergency_contact_name: '',
       emergency_contact_phone: '',
       notes: '',
@@ -243,6 +252,9 @@ export default function CandidatesPage() {
       city: candidate.city || '',
       postcode: candidate.postcode || '',
       national_insurance_number: candidate.national_insurance_number || '',
+      citb_hse_number: candidate.citb_hse_number || '',
+      cpcs_card_number: candidate.cpcs_card_number || '',
+      npors_card_number: candidate.npors_card_number || '',
       emergency_contact_name: candidate.emergency_contact_name || '',
       emergency_contact_phone: candidate.emergency_contact_phone || '',
       notes: candidate.notes || '',
@@ -517,6 +529,9 @@ export default function CandidatesPage() {
         city: formData.city || null,
         postcode: formData.postcode || null,
         national_insurance_number: formData.national_insurance_number || null,
+        citb_hse_number: formData.citb_hse_number || null,
+        cpcs_card_number: formData.cpcs_card_number || null,
+        npors_card_number: formData.npors_card_number || null,
         emergency_contact_name: formData.emergency_contact_name || null,
         emergency_contact_phone: formData.emergency_contact_phone || null,
         notes: formData.notes || null,
@@ -1009,6 +1024,42 @@ export default function CandidatesPage() {
                       value={formData.postcode}
                       onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
                     />
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 mt-2">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">Card Numbers</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="citb_hse_number">CITB HSE Number</Label>
+                      <Input
+                        id="citb_hse_number"
+                        value={formData.citb_hse_number}
+                        onChange={(e) => setFormData({ ...formData, citb_hse_number: e.target.value })}
+                        placeholder="Enter CITB HSE Number"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Pass number if completed CITB HSE test in the last two years</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="cpcs_card_number">CPCS Card Number</Label>
+                        <Input
+                          id="cpcs_card_number"
+                          value={formData.cpcs_card_number}
+                          onChange={(e) => setFormData({ ...formData, cpcs_card_number: e.target.value })}
+                          placeholder="Enter CPCS Card Number"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="npors_card_number">NPORS Card Number</Label>
+                        <Input
+                          id="npors_card_number"
+                          value={formData.npors_card_number}
+                          onChange={(e) => setFormData({ ...formData, npors_card_number: e.target.value })}
+                          placeholder="Enter NPORS Card Number"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
