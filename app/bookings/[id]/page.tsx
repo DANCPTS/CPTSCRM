@@ -34,6 +34,9 @@ export default function BookingFormDetailPage() {
   const [bypassInvoice, setBypassInvoice] = useState(false);
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [savingInvoice, setSavingInvoice] = useState(false);
+  const [paymentType, setPaymentType] = useState<'invoice' | 'stripe'>('invoice');
+  const [paymentLink, setPaymentLink] = useState('');
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
   const [multiCourseDialogOpen, setMultiCourseDialogOpen] = useState(false);
   const [selectedCourseIndex, setSelectedCourseIndex] = useState<number | null>(null);
   const [createdBookings, setCreatedBookings] = useState<Record<string, boolean>>({});
@@ -85,6 +88,8 @@ export default function BookingFormDetailPage() {
       setInvoiceSent(data?.invoice_sent || false);
       setInvoiceNumber(data?.invoice_number || '');
       setInvoiceChecked(data?.invoice_sent || false);
+      setPaymentType(data?.payment_type || 'invoice');
+      setPaymentLink(data?.payment_link || '');
 
       if (data?.form_data?.delegates && data.form_data.delegates.length > 0) {
         const delegate = data.form_data.delegates[0];
@@ -804,130 +809,245 @@ export default function BookingFormDetailPage() {
       </div>
 
       <Dialog open={invoiceDialogOpen} onOpenChange={setInvoiceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Send Invoice</DialogTitle>
+            <DialogTitle>Payment Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="invoice-number">Invoice Number</Label>
-              <Input
-                id="invoice-number"
-                placeholder="Enter invoice number"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                disabled={bypassInvoice}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentType('invoice')}
+                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                  paymentType === 'invoice'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="font-medium">Traditional Invoice</div>
+                <div className="text-xs text-slate-500">Enter invoice number</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentType('stripe')}
+                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                  paymentType === 'stripe'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="font-medium">Stripe Payment</div>
+                <div className="text-xs text-slate-500">Send payment link</div>
+              </button>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="invoice-sent"
-                checked={invoiceChecked}
-                onCheckedChange={(checked) => setInvoiceChecked(checked as boolean)}
-                disabled={bypassInvoice}
-              />
-              <Label htmlFor="invoice-sent" className={bypassInvoice ? "opacity-50" : "cursor-pointer"}>
-                Invoice has been sent to the client
-              </Label>
-            </div>
-            <div className="border-t pt-4">
-              <label className="flex items-start space-x-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="bypass-invoice"
-                  checked={bypassInvoice}
-                  onChange={(e) => {
-                    console.log('Bypass invoice changed to:', e.target.checked);
-                    const newValue = e.target.checked;
-                    console.log('Setting bypassInvoice to:', newValue);
-                    setBypassInvoice(newValue);
-                    if (newValue) {
-                      setInvoiceNumber('');
-                      setInvoiceChecked(false);
-                    }
-                  }}
-                  className="h-4 w-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <div className="flex-1">
-                  <div className="font-medium">
-                    Client will be invoiced later (e.g., when course starts)
-                  </div>
+
+            {paymentType === 'invoice' ? (
+              <>
+                <div>
+                  <Label htmlFor="invoice-number">Invoice Number</Label>
+                  <Input
+                    id="invoice-number"
+                    placeholder="Enter invoice number"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    disabled={bypassInvoice}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="invoice-sent"
+                    checked={invoiceChecked}
+                    onCheckedChange={(checked) => setInvoiceChecked(checked as boolean)}
+                    disabled={bypassInvoice}
+                  />
+                  <Label htmlFor="invoice-sent" className={bypassInvoice ? "opacity-50" : "cursor-pointer"}>
+                    Invoice has been sent to the client
+                  </Label>
+                </div>
+                <div className="border-t pt-4">
+                  <label className="flex items-start space-x-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="bypass-invoice"
+                      checked={bypassInvoice}
+                      onChange={(e) => {
+                        const newValue = e.target.checked;
+                        setBypassInvoice(newValue);
+                        if (newValue) {
+                          setInvoiceNumber('');
+                          setInvoiceChecked(false);
+                        }
+                      }}
+                      className="h-4 w-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        Client will be invoiced later
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Invoice when course starts or at a later date
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label htmlFor="payment-link">Stripe Payment Link</Label>
+                  <Input
+                    id="payment-link"
+                    placeholder="https://buy.stripe.com/..."
+                    value={paymentLink}
+                    onChange={(e) => setPaymentLink(e.target.value)}
+                  />
                   <p className="text-xs text-slate-500 mt-1">
-                    Use this option if the client requests to be invoiced at a later date
+                    Paste the Stripe payment link from your dashboard
                   </p>
                 </div>
-              </label>
-            </div>
+                <div className="p-3 bg-slate-50 rounded-lg">
+                  <div className="text-sm text-slate-600">
+                    <strong>Client:</strong> {formData.contact_name || lead?.name}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <strong>Email:</strong> {formData.contact_email || lead?.email}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)}>
               Cancel
             </Button>
-            <Button
-              onClick={async () => {
-                console.log('Button clicked with bypassInvoice:', bypassInvoice);
-                if (!bypassInvoice) {
-                  if (!invoiceNumber?.trim()) {
-                    toast.error('Please enter an invoice number');
+            {paymentType === 'invoice' ? (
+              <Button
+                onClick={async () => {
+                  if (!bypassInvoice) {
+                    if (!invoiceNumber?.trim()) {
+                      toast.error('Please enter an invoice number');
+                      return;
+                    }
+                    if (!invoiceChecked) {
+                      toast.error('Please confirm the invoice has been sent');
+                      return;
+                    }
+                  }
+
+                  setSavingInvoice(true);
+                  try {
+                    const updateData = {
+                      invoice_sent: bypassInvoice ? true : invoiceChecked,
+                      invoice_number: bypassInvoice ? 'DEFERRED' : invoiceNumber.trim(),
+                      payment_type: 'invoice',
+                    };
+
+                    const { error } = await supabase
+                      .from('booking_forms')
+                      .update(updateData)
+                      .eq('id', bookingFormId)
+                      .select();
+
+                    if (error) throw error;
+
+                    setBookingForm((prev: any) => ({ ...prev, ...updateData }));
+                    setInvoiceSent(updateData.invoice_sent);
+                    setInvoiceNumber(updateData.invoice_number);
+                    setInvoiceDialogOpen(false);
+                    setBypassInvoice(false);
+                    setInvoiceChecked(false);
+
+                    toast.success(bypassInvoice ? 'Invoice deferred. You can now create the booking.' : 'Invoice details saved!');
+                    await loadBookingForm();
+                  } catch (error: any) {
+                    console.error('Failed to save invoice:', error);
+                    toast.error('Failed to save invoice details');
+                  } finally {
+                    setSavingInvoice(false);
+                  }
+                }}
+                disabled={savingInvoice}
+              >
+                {savingInvoice ? 'Saving...' : (bypassInvoice ? 'Defer Invoice' : 'Save Invoice Details')}
+              </Button>
+            ) : (
+              <Button
+                onClick={async () => {
+                  if (!paymentLink?.trim()) {
+                    toast.error('Please enter a payment link');
                     return;
                   }
 
-                  if (!invoiceChecked) {
-                    toast.error('Please confirm the invoice has been sent');
+                  if (!paymentLink.includes('stripe.com') && !paymentLink.includes('buy.stripe')) {
+                    toast.error('Please enter a valid Stripe payment link');
                     return;
                   }
-                }
 
-                setSavingInvoice(true);
-                try {
-                  const updateData = {
-                    invoice_sent: bypassInvoice ? true : invoiceChecked,
-                    invoice_number: bypassInvoice ? 'DEFERRED' : invoiceNumber.trim(),
-                  };
-
-                  console.log('Updating booking form:', bookingFormId, updateData);
-
-                  const { data, error } = await supabase
-                    .from('booking_forms')
-                    .update(updateData)
-                    .eq('id', bookingFormId)
-                    .select();
-
-                  console.log('Update result:', { data, error });
-
-                  if (error) throw error;
-
-                  setBookingForm((prev: any) => ({
-                    ...prev,
-                    invoice_sent: updateData.invoice_sent,
-                    invoice_number: updateData.invoice_number,
-                  }));
-
-                  setInvoiceSent(updateData.invoice_sent);
-                  setInvoiceNumber(updateData.invoice_number);
-
-                  setInvoiceDialogOpen(false);
-                  setBypassInvoice(false);
-                  setInvoiceChecked(false);
-
-                  if (bypassInvoice) {
-                    toast.success('Invoice deferred. You can now create the booking.');
-                  } else {
-                    toast.success('Invoice details saved! You can now create the booking.');
+                  const clientEmail = formData.contact_email || lead?.email;
+                  if (!clientEmail) {
+                    toast.error('No email address found for client');
+                    return;
                   }
 
-                  await loadBookingForm();
-                } catch (error: any) {
-                  console.error('Failed to save invoice:', error);
-                  toast.error('Failed to save invoice details');
-                } finally {
-                  setSavingInvoice(false);
-                }
-              }}
-              disabled={savingInvoice}
-            >
-              {savingInvoice ? 'Saving...' : (bypassInvoice ? 'Defer Invoice' : 'Save Invoice Details')}
-            </Button>
+                  setSendingPaymentLink(true);
+                  try {
+                    const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-payment-link`;
+                    const response = await fetch(apiUrl, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        bookingFormId,
+                        clientName: formData.contact_name || lead?.name,
+                        clientEmail,
+                        paymentLink: paymentLink.trim(),
+                        courses: bookingForm.booking_form_courses,
+                      }),
+                    });
+
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Failed to send payment link');
+
+                    const { error: updateError } = await supabase
+                      .from('booking_forms')
+                      .update({
+                        payment_type: 'stripe',
+                        payment_link: paymentLink.trim(),
+                        payment_link_sent: true,
+                        payment_link_sent_at: new Date().toISOString(),
+                        invoice_sent: true,
+                        invoice_number: 'STRIPE',
+                      })
+                      .eq('id', bookingFormId);
+
+                    if (updateError) throw updateError;
+
+                    setBookingForm((prev: any) => ({
+                      ...prev,
+                      payment_type: 'stripe',
+                      payment_link: paymentLink.trim(),
+                      payment_link_sent: true,
+                      invoice_sent: true,
+                      invoice_number: 'STRIPE',
+                    }));
+
+                    setInvoiceDialogOpen(false);
+                    toast.success('Payment link sent to ' + clientEmail);
+                    await loadBookingForm();
+                  } catch (error: any) {
+                    console.error('Failed to send payment link:', error);
+                    toast.error(error.message || 'Failed to send payment link');
+                  } finally {
+                    setSendingPaymentLink(false);
+                  }
+                }}
+                disabled={sendingPaymentLink}
+              >
+                {sendingPaymentLink ? 'Sending...' : 'Send Payment Link'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
