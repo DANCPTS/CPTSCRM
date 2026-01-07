@@ -1187,20 +1187,38 @@ export default function BookingFormPage() {
                   <h3 className="text-xl font-bold text-[#0f3d5e]">Terms and Conditions</h3>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-lg border-l-4 border-[#0f3d5e] max-h-96 overflow-y-auto text-sm space-y-3 shadow-inner">
-                  <p className="font-bold text-[#0f3d5e] text-base">Payment Terms:</p>
+                  <p className="font-bold text-[#0f3d5e] text-base">Course Correspondence and Confirmation:</p>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Full payment is due 14 days prior to the course start date</li>
-                    <li>Payment can be made by bank transfer or cheque</li>
-                    <li>Purchase orders are accepted from approved accounts</li>
+                    <li>All correspondence regarding bookings will be sent to the named booker on the booking form</li>
+                    <li>No correspondence will be sent to the individual delegate, therefore, responsibility lies with the booker to ensure all relevant information is passed on to the delegate/s</li>
                   </ul>
+
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Payment:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Non-account customers will be invoiced on receipt of completed, signed booking form and payment will be required no later than 14 days prior to course commencement date or the place on the course will be released for re-sale</li>
+                    <li>Account customers will be invoiced on or prior to course commencement day and payment will be required within agreed payment terms i.e. 30 days</li>
+                  </ul>
+
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Missing or Late Payments:</p>
+                  <p className="pl-5">Without prejudice to any of our other rights, if you fail to make any payment in full on the due date we may charge you interest (both before and after judgement) on the amount unpaid in accordance with the Late Payment of Commercial Debts (Interest) Act 1998 as amended and supplemented by the Late Payment of Commercial Debts Regulations 2002 and/or suspend the supply of further Products and/or Services to you or any of your Associated Companies.</p>
 
                   <p className="font-bold text-[#0f3d5e] text-base mt-4">Cancellation Policy:</p>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Cancellations made more than 14 days before the course: Full refund minus £50 administration fee</li>
-                    <li>Cancellations made 7-14 days before the course: 50% of course fee will be charged</li>
-                    <li>Cancellations made less than 7 days before the course: Full course fee will be charged</li>
-                    <li>Delegates may be substituted at any time without charge</li>
+                    <li>More than 20 working days prior to course commencement date - no fee</li>
+                    <li>Between 20 working days and 10 working days inclusive - 50% fee</li>
+                    <li>Less than 10 working days - full course cost</li>
                   </ul>
+
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Transfer Policy:</p>
+                  <p className="pl-5 mb-1">To transfer a named delegate to an alternative date charges will be levied as follows:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>More than 20 working days prior to course commencement date - no fee</li>
+                    <li>Between 20 working days and 15 working days inclusive - £125 administration fee</li>
+                    <li>Less than 15 working days - 100% of the new course fee payable</li>
+                  </ul>
+
+                  <p className="font-bold text-[#0f3d5e] text-base mt-4">Substitutions:</p>
+                  <p className="pl-5">Substitutions of delegates may be made with no fee but must be advised in advance so that course information can be amended.</p>
 
                   <p className="font-bold text-[#0f3d5e] text-base mt-4">Course Changes:</p>
                   <ul className="list-disc pl-5 space-y-1">
