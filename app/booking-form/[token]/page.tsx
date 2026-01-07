@@ -182,17 +182,27 @@ export default function BookingFormPage() {
     }
   };
 
+  const getCanvasCoordinates = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const { x, y } = getCanvasCoordinates(canvas, e.clientX, e.clientY);
     setIsDrawing(true);
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.moveTo(x, y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -201,13 +211,15 @@ export default function BookingFormPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    const { x, y } = getCanvasCoordinates(canvas, e.clientX, e.clientY);
+    ctx.lineTo(x, y);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.stroke();
     setHasSignature(true);
   };
@@ -221,14 +233,14 @@ export default function BookingFormPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const touch = e.touches[0];
+    const { x, y } = getCanvasCoordinates(canvas, touch.clientX, touch.clientY);
     setIsDrawing(true);
     ctx.beginPath();
-    ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    ctx.moveTo(x, y);
   };
 
   const touchDraw = (e: React.TouchEvent<HTMLCanvasElement>) => {
@@ -238,14 +250,16 @@ export default function BookingFormPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const touch = e.touches[0];
-    ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    const { x, y } = getCanvasCoordinates(canvas, touch.clientX, touch.clientY);
+    ctx.lineTo(x, y);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.stroke();
     setHasSignature(true);
   };
@@ -1115,32 +1129,6 @@ export default function BookingFormPage() {
               <div className="space-y-4 border-t-2 border-[#F28D00] pt-6">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
-                  <h3 className="text-xl font-bold text-[#0f3d5e]">Signature *</h3>
-                </div>
-                <p className="text-sm text-slate-600">Please sign in the box below using your mouse, touchpad, or finger</p>
-                <div className="border-2 border-[#0f3d5e] rounded-lg bg-white shadow-sm">
-                  <canvas
-                    ref={canvasRef}
-                    width={600}
-                    height={200}
-                    className="w-full cursor-crosshair touch-none"
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startTouchDrawing}
-                    onTouchMove={touchDraw}
-                    onTouchEnd={stopTouchDrawing}
-                  />
-                </div>
-                <Button type="button" variant="outline" size="sm" onClick={clearSignature} className="border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white">
-                  Clear Signature
-                </Button>
-              </div>
-
-              <div className="space-y-4 border-t-2 border-[#F28D00] pt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
                   <h3 className="text-xl font-bold text-[#0f3d5e]">Terms and Conditions</h3>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-lg border-l-4 border-[#0f3d5e] max-h-96 overflow-y-auto text-sm space-y-3 shadow-inner">
@@ -1191,6 +1179,32 @@ export default function BookingFormPage() {
                     I have read and agree to the terms and conditions above. I confirm that the information provided is accurate and understand that this is a legally binding agreement. *
                   </Label>
                 </div>
+              </div>
+
+              <div className="space-y-4 border-t-2 border-[#F28D00] pt-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Signature *</h3>
+                </div>
+                <p className="text-sm text-slate-600">Please sign in the box below using your mouse, touchpad, or finger</p>
+                <div className="border-2 border-[#0f3d5e] rounded-lg bg-white shadow-sm">
+                  <canvas
+                    ref={canvasRef}
+                    width={600}
+                    height={200}
+                    className="w-full cursor-crosshair touch-none"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startTouchDrawing}
+                    onTouchMove={touchDraw}
+                    onTouchEnd={stopTouchDrawing}
+                  />
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={clearSignature} className="border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white">
+                  Clear Signature
+                </Button>
               </div>
 
               <div className="flex justify-center pt-6">
