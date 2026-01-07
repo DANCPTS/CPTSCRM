@@ -867,10 +867,14 @@ export default function BookingFormPage() {
                                   newDelegates[index].name = formData.contact_name;
                                   newDelegates[index].email = formData.contact_email;
                                   newDelegates[index].phone = formData.contact_phone;
+                                  newDelegates[index].address = formData.address;
+                                  newDelegates[index].postcode = formData.postcode;
                                 } else {
                                   newDelegates[index].name = '';
                                   newDelegates[index].email = '';
                                   newDelegates[index].phone = '';
+                                  newDelegates[index].address = '';
+                                  newDelegates[index].postcode = '';
                                 }
                                 setDelegates(newDelegates);
                               }}
