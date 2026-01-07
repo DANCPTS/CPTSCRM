@@ -979,6 +979,7 @@ export default function LeadsPage() {
         }}
         leadId={selectedLeadForInvoice?.id}
         leadName={selectedLeadForInvoice?.name}
+        leadEmail={selectedLeadForInvoice?.email}
       />
 
       <BookingDialog
