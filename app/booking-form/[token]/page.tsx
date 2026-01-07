@@ -576,7 +576,7 @@ export default function BookingFormPage() {
               <div>
                 <div className="flex items-center gap-2 mb-4 pb-2 border-b-2 border-[#F28D00]">
                   <div className="w-1 h-6 bg-[#F28D00] rounded-full"></div>
-                  <h3 className="text-xl font-bold text-[#0f3d5e]">Contact Details</h3>
+                  <h3 className="text-xl font-bold text-[#0f3d5e]">Booker Details</h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {customerType === 'business' && (
@@ -1060,17 +1060,19 @@ export default function BookingFormPage() {
                   ))}
                 </div>
 
-                <div className="mt-6 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addDelegate}
-                    className="border-2 border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white font-semibold"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Another Delegate
-                  </Button>
-                </div>
+                {getMinimumDelegatesRequired() > 1 && (
+                  <div className="mt-6 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addDelegate}
+                      className="border-2 border-[#0f3d5e] text-[#0f3d5e] hover:bg-[#0f3d5e] hover:text-white font-semibold"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Another Delegate
+                    </Button>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
 
