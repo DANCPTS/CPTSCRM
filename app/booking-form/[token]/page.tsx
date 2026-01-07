@@ -66,6 +66,7 @@ export default function BookingFormPage() {
     price: number;
     currency: string;
     display_order: number;
+    vat_exempt: boolean;
   }
 
   const [delegates, setDelegates] = useState<DelegateDetails[]>([]);
@@ -738,7 +739,10 @@ export default function BookingFormPage() {
 
                             <div className="space-y-1">
                               <Label className="text-sm text-gray-600">Price</Label>
-                              <p className="font-medium text-[#F28D00]">{course.currency} {course.price.toFixed(2)} + VAT</p>
+                              <p className="font-medium text-[#F28D00]">
+                                {course.currency} {course.price.toFixed(2)}
+                                {!course.vat_exempt && ' + VAT'}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -752,7 +756,10 @@ export default function BookingFormPage() {
                             </div>
                             <div>
                               <Label className="text-sm text-slate-200 font-medium">Total Price:</Label>
-                              <p className="font-bold text-2xl mt-1 text-[#F9B000]">{courses[0]?.currency} {courses.reduce((sum, c) => sum + c.price, 0).toFixed(2)}</p>
+                              <p className="font-bold text-2xl mt-1 text-[#F9B000]">
+                                {courses[0]?.currency} {courses.reduce((sum, c) => sum + c.price, 0).toFixed(2)}
+                                {courses.every(c => c.vat_exempt) ? '' : courses.some(c => c.vat_exempt) ? ' (Mixed VAT)' : ' + VAT'}
+                              </p>
                             </div>
                           </div>
                         </div>

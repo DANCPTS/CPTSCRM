@@ -141,6 +141,7 @@ Deno.serve(async (req: Request) => {
           number_of_delegates: c.number_of_delegates,
           price: c.price,
           currency: c.currency,
+          vat_exempt: c.vat_exempt || false,
         }));
       }
     }
@@ -168,12 +169,16 @@ Deno.serve(async (req: Request) => {
       const coursesHtml = proposalCourses.map((course, index) => `
         <div style="background-color: #f9fafb; padding: 15px; border-radius: 5px; margin: 10px 0; border-left: 4px solid #0f3d5e;">
           <h4 style="margin-top: 0; color: #1f2937;">Course ${index + 1}: ${course.course_name}</h4>
-          <p style="margin: 5px 0;"><strong>Price:</strong> ${formatCurrency(course.price, course.currency || 'GBP')} + VAT</p>
+          <p style="margin: 5px 0;"><strong>Price:</strong> ${formatCurrency(course.price, course.currency || 'GBP')}${course.vat_exempt ? '' : ' + VAT'}</p>
           ${course.dates ? `<p style="margin: 5px 0;"><strong>Dates:</strong> ${course.dates}</p>` : ''}
           ${course.venue ? `<p style="margin: 5px 0;"><strong>Venue:</strong> ${course.venue}</p>` : ''}
           <p style="margin: 5px 0;"><strong>Delegates:</strong> ${course.number_of_delegates}</p>
         </div>
       `).join('');
+
+      const allVatExempt = proposalCourses.every(c => c.vat_exempt);
+      const someVatExempt = proposalCourses.some(c => c.vat_exempt);
+      const vatSuffix = allVatExempt ? '' : someVatExempt ? ' (Mixed VAT)' : ' + VAT';
 
       quoteDetailsHtml = `
         <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
@@ -182,7 +187,7 @@ Deno.serve(async (req: Request) => {
           ${proposalCourses.length > 1 ? `
             <div style="background-color: #0f3d5e; color: white; padding: 15px; border-radius: 5px; margin-top: 15px;">
               <p style="margin: 5px 0;"><strong>Total Delegates:</strong> ${totalDelegates}</p>
-              <p style="margin: 5px 0;"><strong>Total Price:</strong> ${formatCurrency(totalPrice, currency)} + VAT</p>
+              <p style="margin: 5px 0;"><strong>Total Price:</strong> ${formatCurrency(totalPrice, currency)}${vatSuffix}</p>
             </div>
           ` : ''}
         </div>

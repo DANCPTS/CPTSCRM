@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Trash2, Calendar, FileText, Sparkles, Plus, X, GripVertical } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { NotesDialog } from '@/components/notes-dialog';
 import { NotesList } from '@/components/notes-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +45,7 @@ interface ProposalCourse {
   number_of_delegates: string;
   notes: string;
   display_order: number;
+  vat_exempt: boolean;
 }
 
 export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
@@ -169,6 +171,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         number_of_delegates: course.number_of_delegates?.toString() || '',
         notes: course.notes || '',
         display_order: course.display_order || 0,
+        vat_exempt: course.vat_exempt || false,
       })));
     } else {
       setProposalCourses([]);
@@ -258,6 +261,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
             notes: course.notes,
             display_order: index,
             created_by: userProfile?.id,
+            vat_exempt: course.vat_exempt,
           }));
 
           const { error: insertError } = await supabase
@@ -290,6 +294,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
             notes: course.notes,
             display_order: index,
             created_by: userProfile?.id,
+            vat_exempt: course.vat_exempt,
           }));
 
           const { error: insertError } = await supabase
@@ -372,6 +377,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         number_of_delegates: '1',
         notes: '',
         display_order: proposalCourses.length,
+        vat_exempt: false,
       },
     ]);
   };
@@ -380,9 +386,13 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
     setProposalCourses(proposalCourses.filter((_, i) => i !== index));
   };
 
-  const updateCourse = (index: number, field: keyof ProposalCourse, value: string) => {
+  const updateCourse = (index: number, field: keyof ProposalCourse, value: string | boolean) => {
     const updated = [...proposalCourses];
-    updated[index] = { ...updated[index], [field]: value };
+    if (field === 'vat_exempt') {
+      updated[index] = { ...updated[index], [field]: value === true || value === 'true' };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
     setProposalCourses(updated);
   };
 
@@ -641,7 +651,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
                               </div>
 
                               <div className="space-y-2">
-                                <Label>Price + VAT</Label>
+                                <Label>{course.vat_exempt ? 'Price (No VAT)' : 'Price + VAT'}</Label>
                                 <Input
                                   type="number"
                                   step="0.01"
@@ -661,12 +671,24 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="GBP">GBP (£)</SelectItem>
-                                    <SelectItem value="EUR">EUR (€)</SelectItem>
-                                    <SelectItem value="USD">USD ($)</SelectItem>
-                                    <SelectItem value="PLN">PLN (zł)</SelectItem>
+                                    <SelectItem value="GBP">GBP</SelectItem>
+                                    <SelectItem value="EUR">EUR</SelectItem>
+                                    <SelectItem value="USD">USD</SelectItem>
+                                    <SelectItem value="PLN">PLN</SelectItem>
                                   </SelectContent>
                                 </Select>
+                              </div>
+
+                              <div className="col-span-2 flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                                <div>
+                                  <Label htmlFor={`vat_exempt_${index}`} className="font-medium">VAT Exempt (Dubai Account)</Label>
+                                  <p className="text-xs text-slate-500 mt-0.5">Enable for Dubai account bookings</p>
+                                </div>
+                                <Switch
+                                  id={`vat_exempt_${index}`}
+                                  checked={course.vat_exempt}
+                                  onCheckedChange={(checked) => updateCourse(index, 'vat_exempt', checked)}
+                                />
                               </div>
 
                               <div className="space-y-2">
@@ -720,9 +742,16 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
                               <span className="font-bold">{calculateTotals().totalDelegates}</span>
                             </div>
                             <div className="flex justify-between items-center text-sm mt-2">
-                              <span className="font-medium">Total Price (plus VAT):</span>
+                              <span className="font-medium">Total Price:</span>
                               <span className="font-bold">
                                 {proposalCourses[0]?.currency || 'GBP'} {calculateTotals().totalPrice.toFixed(2)}
+                                {proposalCourses.every(c => c.vat_exempt) ? (
+                                  <span className="text-green-600 ml-1">(No VAT)</span>
+                                ) : proposalCourses.some(c => c.vat_exempt) ? (
+                                  <span className="text-amber-600 ml-1">(Mixed VAT)</span>
+                                ) : (
+                                  <span className="text-slate-500 ml-1">(+ VAT)</span>
+                                )}
                               </span>
                             </div>
                           </CardContent>

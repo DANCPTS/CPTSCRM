@@ -302,6 +302,7 @@ export default function LeadsPage() {
           price: course.price,
           currency: course.currency,
           display_order: index,
+          vat_exempt: course.vat_exempt || false,
         }));
 
         const { error: coursesError } = await supabase
