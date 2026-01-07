@@ -5,7 +5,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Link } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
@@ -115,13 +115,35 @@ export default function BookingsPage() {
                         {' • '}
                         {booking.course_runs && format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy')}
                         {' • '}
-                        £{booking.amount}
+                        £{(booking.net_amount || booking.amount || 0).toFixed(2)}
+                        {!booking.vat_exempt && (
+                          <span className="text-slate-400"> + VAT</span>
+                        )}
                       </p>
-                      {booking.invoice_no && (
-                        <p className="text-xs text-slate-500 mt-1">Invoice: {booking.invoice_no}</p>
-                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {booking.invoice_no && (
+                          <span className="text-xs text-slate-500">Invoice: {booking.invoice_no}</span>
+                        )}
+                        {booking.payment_link && (
+                          <a
+                            href={booking.payment_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Link className="h-3 w-3" />
+                            Payment Link
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      {booking.vat_exempt && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          VAT Exempt
+                        </Badge>
+                      )}
                       <Badge className={statusColors[booking.status]}>
                         {booking.status}
                       </Badge>

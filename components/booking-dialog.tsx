@@ -11,7 +11,8 @@ import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { UserPlus, Users, User, AlertTriangle, Search } from 'lucide-react';
+import { UserPlus, Users, User, AlertTriangle, Search, Copy, ExternalLink } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 interface BookingDialogProps {
   open: boolean;
@@ -58,6 +59,8 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
     amount: '',
     invoice_no: '',
     certificate_no: '',
+    vat_exempt: false,
+    payment_link: '',
   });
 
   const [isOtherCourse, setIsOtherCourse] = useState(false);
@@ -610,6 +613,9 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
         }
       }
 
+      const netAmount = parseFloat(bookingData.amount) || 0;
+      const vatAmount = bookingData.vat_exempt ? 0 : netAmount * 0.20;
+
       const { error: bookingError } = await supabase
         .from('bookings')
         .insert([
@@ -619,7 +625,11 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
             candidate_id: candidateId,
             course_run_id: courseRunId,
             status: bookingData.status,
-            amount: parseFloat(bookingData.amount) || 0,
+            amount: netAmount,
+            net_amount: netAmount,
+            vat_amount: vatAmount,
+            vat_exempt: bookingData.vat_exempt,
+            payment_link: bookingData.payment_link || null,
             invoice_no: bookingData.invoice_no || null,
             certificate_no: bookingData.certificate_no || null,
             lead_id: prefillData?.leadId || null,
@@ -652,6 +662,8 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
       amount: '',
       invoice_no: '',
       certificate_no: '',
+      vat_exempt: false,
+      payment_link: '',
     });
     setNewContactData({
       first_name: '',
@@ -1224,53 +1236,111 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (plus VAT) *</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  value={bookingData.amount}
-                  onChange={(e) => setBookingData({ ...bookingData, amount: e.target.value })}
-                  required
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                <div>
+                  <Label htmlFor="vat_exempt" className="font-medium">VAT Exempt (Dubai Account)</Label>
+                  <p className="text-xs text-slate-500 mt-0.5">Enable for bookings through the Dubai account</p>
+                </div>
+                <Switch
+                  id="vat_exempt"
+                  checked={bookingData.vat_exempt}
+                  onCheckedChange={(checked) => setBookingData({ ...bookingData, vat_exempt: checked })}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={bookingData.status}
-                  onValueChange={(value) => setBookingData({ ...bookingData, status: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="reserved">Reserved</SelectItem>
-                    <SelectItem value="confirmed">Confirmed</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Net Amount *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    value={bookingData.amount}
+                    onChange={(e) => setBookingData({ ...bookingData, amount: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={bookingData.status}
+                    onValueChange={(value) => setBookingData({ ...bookingData, status: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reserved">Reserved</SelectItem>
+                      <SelectItem value="confirmed">Confirmed</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {bookingData.amount && (
+                <div className="p-3 bg-slate-50 rounded-lg border">
+                  <div className="text-sm text-slate-600 mb-2">Price Breakdown</div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span>Net Amount:</span>
+                      <span className="font-medium">£{parseFloat(bookingData.amount).toFixed(2)}</span>
+                    </div>
+                    {!bookingData.vat_exempt && (
+                      <div className="flex justify-between text-sm">
+                        <span>VAT (20%):</span>
+                        <span className="font-medium">£{(parseFloat(bookingData.amount) * 0.20).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-semibold border-t pt-1 mt-1">
+                      <span>Total:</span>
+                      <span>
+                        £{bookingData.vat_exempt
+                          ? parseFloat(bookingData.amount).toFixed(2)
+                          : (parseFloat(bookingData.amount) * 1.20).toFixed(2)
+                        }
+                      </span>
+                    </div>
+                    {bookingData.vat_exempt && (
+                      <div className="text-xs text-green-600 mt-1">VAT Exempt</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="invoice_no">Invoice No</Label>
+                  <Input
+                    id="invoice_no"
+                    value={bookingData.invoice_no}
+                    onChange={(e) => setBookingData({ ...bookingData, invoice_no: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="certificate_no">Certificate No</Label>
+                  <Input
+                    id="certificate_no"
+                    value={bookingData.certificate_no}
+                    onChange={(e) => setBookingData({ ...bookingData, certificate_no: e.target.value })}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invoice_no">Invoice No</Label>
+                <Label htmlFor="payment_link">Stripe Payment Link</Label>
                 <Input
-                  id="invoice_no"
-                  value={bookingData.invoice_no}
-                  onChange={(e) => setBookingData({ ...bookingData, invoice_no: e.target.value })}
+                  id="payment_link"
+                  type="url"
+                  placeholder="https://buy.stripe.com/..."
+                  value={bookingData.payment_link}
+                  onChange={(e) => setBookingData({ ...bookingData, payment_link: e.target.value })}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="certificate_no">Certificate No</Label>
-                <Input
-                  id="certificate_no"
-                  value={bookingData.certificate_no}
-                  onChange={(e) => setBookingData({ ...bookingData, certificate_no: e.target.value })}
-                />
+                <p className="text-xs text-slate-500">Paste the payment link you created in Stripe</p>
               </div>
             </div>
           </div>
