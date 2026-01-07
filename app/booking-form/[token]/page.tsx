@@ -51,6 +51,9 @@ export default function BookingFormPage() {
     address: string;
     city: string;
     postcode: string;
+    citb_hse_number: string;
+    cpcs_card_number: string;
+    npors_card_number: string;
     selectedCourses: string[];
   }
 
@@ -141,6 +144,9 @@ export default function BookingFormPage() {
           address: '',
           city: '',
           postcode: '',
+          citb_hse_number: '',
+          cpcs_card_number: '',
+          npors_card_number: '',
           selectedCourses: autoSelectCourses,
         })));
 
@@ -290,6 +296,9 @@ export default function BookingFormPage() {
       address: '',
       city: '',
       postcode: '',
+      citb_hse_number: '',
+      cpcs_card_number: '',
+      npors_card_number: '',
       selectedCourses: [],
     };
     setDelegates([...delegates, newDelegate]);
@@ -392,6 +401,9 @@ export default function BookingFormPage() {
         address: delegate.address,
         city: delegate.city || null,
         postcode: delegate.postcode,
+        citb_hse_number: delegate.citb_hse_number || null,
+        cpcs_card_number: delegate.cpcs_card_number || null,
+        npors_card_number: delegate.npors_card_number || null,
       }));
 
       const { data: insertedDelegates, error: delegatesError } = await supabase
@@ -1021,6 +1033,49 @@ export default function BookingFormPage() {
                                 setDelegates(newDelegates);
                               }}
                               required
+                            />
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2 border-t pt-4 mt-4">
+                            <Label htmlFor={`delegate_citb_${index}`}>CITB HSE Number (Optional)</Label>
+                            <Input
+                              id={`delegate_citb_${index}`}
+                              value={delegate.citb_hse_number}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].citb_hse_number = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
+                              placeholder="Enter CITB HSE Number"
+                            />
+                            <p className="text-xs text-slate-500">If you completed your CITB HSE test in the last two years, please enter your pass number above</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor={`delegate_cpcs_${index}`}>CPCS Card Number (Optional)</Label>
+                            <Input
+                              id={`delegate_cpcs_${index}`}
+                              value={delegate.cpcs_card_number}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].cpcs_card_number = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
+                              placeholder="Enter CPCS Card Number"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor={`delegate_npors_${index}`}>NPORS Card Number (Optional)</Label>
+                            <Input
+                              id={`delegate_npors_${index}`}
+                              value={delegate.npors_card_number}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].npors_card_number = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
+                              placeholder="Enter NPORS Card Number"
                             />
                           </div>
 
