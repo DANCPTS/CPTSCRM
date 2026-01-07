@@ -49,6 +49,7 @@ export default function BookingFormPage() {
     national_insurance: string;
     date_of_birth: string;
     address: string;
+    city: string;
     postcode: string;
     selectedCourses: string[];
   }
@@ -138,6 +139,7 @@ export default function BookingFormPage() {
           national_insurance: '',
           date_of_birth: '',
           address: '',
+          city: '',
           postcode: '',
           selectedCourses: autoSelectCourses,
         })));
@@ -272,6 +274,7 @@ export default function BookingFormPage() {
       national_insurance: '',
       date_of_birth: '',
       address: '',
+      city: '',
       postcode: '',
       selectedCourses: [],
     };
@@ -373,6 +376,7 @@ export default function BookingFormPage() {
         national_insurance: delegate.national_insurance,
         date_of_birth: delegate.date_of_birth,
         address: delegate.address,
+        city: delegate.city || null,
         postcode: delegate.postcode,
       }));
 
@@ -868,12 +872,14 @@ export default function BookingFormPage() {
                                   newDelegates[index].email = formData.contact_email;
                                   newDelegates[index].phone = formData.contact_phone;
                                   newDelegates[index].address = formData.address;
+                                  newDelegates[index].city = formData.city;
                                   newDelegates[index].postcode = formData.postcode;
                                 } else {
                                   newDelegates[index].name = '';
                                   newDelegates[index].email = '';
                                   newDelegates[index].phone = '';
                                   newDelegates[index].address = '';
+                                  newDelegates[index].city = '';
                                   newDelegates[index].postcode = '';
                                 }
                                 setDelegates(newDelegates);
@@ -974,6 +980,19 @@ export default function BookingFormPage() {
                               }}
                               rows={2}
                               required
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor={`delegate_city_${index}`}>City</Label>
+                            <Input
+                              id={`delegate_city_${index}`}
+                              value={delegate.city}
+                              onChange={(e) => {
+                                const newDelegates = [...delegates];
+                                newDelegates[index].city = e.target.value;
+                                setDelegates(newDelegates);
+                              }}
                             />
                           </div>
 
