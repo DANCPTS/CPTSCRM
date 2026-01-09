@@ -125,16 +125,19 @@ export default function BookingsPage() {
                 ? `${booking.candidates.first_name} ${booking.candidates.last_name}`
                 : null;
 
+              const displayName = delegateNames || candidateName || bookerName || 'Unknown';
+              const showBookedBy = delegateNames && bookerName && !candidateName;
+
               return (
               <Card key={booking.id} className="hover:shadow-sm transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h3 className="font-semibold mb-1">
-                        {candidateName || delegateNames || bookerName || 'Unknown'}
+                        {displayName}
                         {booking.companies && ` - ${booking.companies.name}`}
                       </h3>
-                      {delegateNames && bookerName && !candidateName && (
+                      {showBookedBy && (
                         <p className="text-xs text-slate-500 mb-1">Booked by: {bookerName}</p>
                       )}
                       <p className="text-sm text-slate-600">
