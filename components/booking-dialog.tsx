@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 interface BookingDialogProps {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   prefillData?: {
     leadId?: string;
     contactName?: string;
@@ -32,7 +33,7 @@ interface BookingDialogProps {
   };
 }
 
-export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps) {
+export function BookingDialog({ open, onClose, onSuccess, prefillData }: BookingDialogProps) {
   const [loading, setLoading] = useState(false);
   const [clientType, setClientType] = useState<'existing' | 'new'>('existing');
   const [isIndividual, setIsIndividual] = useState(false);
@@ -656,6 +657,7 @@ export function BookingDialog({ open, onClose, prefillData }: BookingDialogProps
       if (bookingError) throw bookingError;
 
       toast.success('Booking created successfully');
+      onSuccess?.();
       onClose();
       resetForm();
     } catch (error: any) {

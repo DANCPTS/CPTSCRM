@@ -40,6 +40,7 @@ export default function BookingFormDetailPage() {
   const [multiCourseDialogOpen, setMultiCourseDialogOpen] = useState(false);
   const [selectedCourseIndex, setSelectedCourseIndex] = useState<number | null>(null);
   const [createdBookings, setCreatedBookings] = useState<Record<string, boolean>>({});
+  const [bookingWasCreated, setBookingWasCreated] = useState(false);
 
   useEffect(() => {
     loadBookingForm();
@@ -1124,13 +1125,15 @@ export default function BookingFormDetailPage() {
         open={bookingDialogOpen}
         onClose={async () => {
           setBookingDialogOpen(false);
-          if (selectedCourseIndex !== null && bookingForm?.booking_form_courses?.[selectedCourseIndex]) {
+          if (bookingWasCreated && selectedCourseIndex !== null && bookingForm?.booking_form_courses?.[selectedCourseIndex]) {
             const courseId = bookingForm.booking_form_courses[selectedCourseIndex].id;
             setCreatedBookings(prev => ({ ...prev, [courseId]: true }));
             setMultiCourseDialogOpen(true);
           }
+          setBookingWasCreated(false);
           await loadBookingForm();
         }}
+        onSuccess={() => setBookingWasCreated(true)}
         prefillData={(() => {
           const selectedCourse = selectedCourseIndex !== null && bookingForm?.booking_form_courses?.[selectedCourseIndex]
             ? bookingForm.booking_form_courses[selectedCourseIndex]
