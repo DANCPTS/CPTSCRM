@@ -69,6 +69,66 @@ export async function getBookings() {
   return data;
 }
 
+export async function getDelegatesForBookings(leadIds: string[]) {
+  if (leadIds.length === 0) return new Map();
+
+  const { data: bookingForms } = await supabase
+    .from('booking_forms')
+    .select('id, lead_id')
+    .in('lead_id', leadIds);
+
+  if (!bookingForms || bookingForms.length === 0) return new Map();
+
+  const bookingFormIds = bookingForms.map(bf => bf.id);
+  const leadToFormId = new Map(bookingForms.map(bf => [bf.lead_id, bf.id]));
+
+  const [coursesResult, delegatesResult, delegateCoursesResult] = await Promise.all([
+    supabase
+      .from('booking_form_courses')
+      .select('id, booking_form_id, course_name')
+      .in('booking_form_id', bookingFormIds),
+    supabase
+      .from('booking_form_delegates')
+      .select('id, booking_form_id, name')
+      .in('booking_form_id', bookingFormIds),
+    supabase
+      .from('booking_form_delegate_courses')
+      .select('delegate_id, course_id, booking_form_id')
+      .in('booking_form_id', bookingFormIds),
+  ]);
+
+  const bfCourses = coursesResult.data || [];
+  const delegates = delegatesResult.data || [];
+  const delegateCourses = delegateCoursesResult.data || [];
+
+  const courseIdToName = new Map(bfCourses.map(c => [c.id, { name: c.course_name, formId: c.booking_form_id }]));
+  const delegateIdToName = new Map(delegates.map(d => [d.id, { name: d.name, formId: d.booking_form_id }]));
+
+  const result = new Map<string, Map<string, string[]>>();
+
+  for (const dc of delegateCourses) {
+    const courseInfo = courseIdToName.get(dc.course_id);
+    const delegateInfo = delegateIdToName.get(dc.delegate_id);
+
+    if (courseInfo && delegateInfo) {
+      const leadId = Array.from(leadToFormId.entries()).find(([, fId]) => fId === dc.booking_form_id)?.[0];
+      if (leadId) {
+        if (!result.has(leadId)) {
+          result.set(leadId, new Map());
+        }
+        const courseMap = result.get(leadId)!;
+        const normalizedName = courseInfo.name.toLowerCase().trim();
+        if (!courseMap.has(normalizedName)) {
+          courseMap.set(normalizedName, []);
+        }
+        courseMap.get(normalizedName)!.push(delegateInfo.name);
+      }
+    }
+  }
+
+  return result;
+}
+
 export async function getTasks(userId?: string) {
   let query = supabase
     .from('tasks')

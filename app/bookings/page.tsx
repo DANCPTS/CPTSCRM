@@ -18,12 +18,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { getBookings } from '@/lib/db-helpers';
+import { getBookings, getDelegatesForBookings } from '@/lib/db-helpers';
 import { format, parseISO } from 'date-fns';
 import { BookingDialog } from '@/components/booking-dialog';
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([]);
+  const [delegateMap, setDelegateMap] = useState<Map<string, Map<string, string[]>>>(new Map());
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -37,11 +38,28 @@ export default function BookingsPage() {
     try {
       const data = await getBookings();
       setBookings(data);
+
+      const leadIds = Array.from(new Set(data.filter((b: any) => b.lead_id).map((b: any) => b.lead_id)));
+      const delegates = await getDelegatesForBookings(leadIds);
+      setDelegateMap(delegates);
     } catch (error) {
       console.error('Failed to load bookings:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getDelegateNames = (booking: any): string | null => {
+    if (!booking.lead_id) return null;
+    const courseTitle = booking.course_runs?.courses?.title;
+    if (!courseTitle) return null;
+
+    const leadDelegates = delegateMap.get(booking.lead_id);
+    if (!leadDelegates) return null;
+
+    const normalizedTitle = courseTitle.toLowerCase().trim();
+    const delegates = leadDelegates.get(normalizedTitle);
+    return delegates && delegates.length > 0 ? delegates.join(', ') : null;
   };
 
   const statusColors: Record<string, string> = {
@@ -98,18 +116,27 @@ export default function BookingsPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {bookings.map(booking => (
+            {bookings.map(booking => {
+              const delegateNames = getDelegateNames(booking);
+              const bookerName = booking.contacts
+                ? `${booking.contacts.first_name || ''} ${booking.contacts.last_name || ''}`.trim()
+                : null;
+              const candidateName = booking.candidates
+                ? `${booking.candidates.first_name} ${booking.candidates.last_name}`
+                : null;
+
+              return (
               <Card key={booking.id} className="hover:shadow-sm transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h3 className="font-semibold mb-1">
-                        {booking.candidates
-                          ? `${booking.candidates.first_name} ${booking.candidates.last_name}`
-                          : `${booking.contacts?.first_name || ''} ${booking.contacts?.last_name || ''}`
-                        }
+                        {candidateName || delegateNames || bookerName || 'Unknown'}
                         {booking.companies && ` - ${booking.companies.name}`}
                       </h3>
+                      {delegateNames && bookerName && !candidateName && (
+                        <p className="text-xs text-slate-500 mb-1">Booked by: {bookerName}</p>
+                      )}
                       <p className="text-sm text-slate-600">
                         {booking.course_runs?.courses?.title}
                         {' • '}
@@ -172,7 +199,8 @@ export default function BookingsPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
