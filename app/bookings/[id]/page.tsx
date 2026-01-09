@@ -10,12 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, CheckCircle, Calendar, Mail, Phone, Building2, User, FileText, Plus, Send, FileCheck, Download } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Calendar, Mail, Phone, Building2, User, FileText, Plus, Send, FileCheck, Download, Loader2 } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { CelebrationAnimation } from '@/components/celebration-animation';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import html2pdf from 'html2pdf.js';
 
 export default function BookingFormDetailPage() {
   const params = useParams();
@@ -43,6 +44,7 @@ export default function BookingFormDetailPage() {
   const [bookingWasCreated, setBookingWasCreated] = useState(false);
   const [delegates, setDelegates] = useState<any[]>([]);
   const [delegateCourseMap, setDelegateCourseMap] = useState<Record<string, string[]>>({});
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     loadBookingForm();
@@ -229,289 +231,181 @@ export default function BookingFormDetailPage() {
     }
   };
 
-  const downloadSignedForm = () => {
-    const formData = bookingForm.form_data || {};
-    const lead = bookingForm.leads;
+  const downloadSignedForm = async () => {
+    setDownloadingPdf(true);
 
-    // Use delegates from database if available, otherwise fall back to form_data
-    const delegatesToDisplay = delegates.length > 0 ? delegates : formData.delegates;
+    try {
+      const formData = bookingForm.form_data || {};
+      const lead = bookingForm.leads;
+      const delegatesToDisplay = delegates.length > 0 ? delegates : formData.delegates;
 
-    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Booking Form - ${formData.contact_name || lead?.name || 'N/A'}</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #333; }
-    h1 { color: #1e293b; border-bottom: 3px solid #3b82f6; padding-bottom: 10px; }
-    h2 { color: #475569; margin-top: 30px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
-    .section { margin-bottom: 30px; }
-    .field { margin-bottom: 15px; }
-    .label { font-weight: bold; color: #64748b; font-size: 14px; margin-bottom: 4px; }
-    .value { color: #1e293b; font-size: 16px; }
-    .signature-box { border: 2px solid #e2e8f0; padding: 20px; margin-top: 20px; background: #f8fafc; }
-    .signature-img { max-width: 100%; height: auto; border: 1px solid #cbd5e1; background: white; padding: 10px; }
-    .status-badge { display: inline-block; padding: 6px 12px; border-radius: 4px; font-size: 14px; font-weight: bold; }
-    .status-signed { background: #dcfce7; color: #166534; }
-    .status-pending { background: #fef3c7; color: #92400e; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; color: #64748b; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <h1>Booking Form</h1>
-  <div class="section">
-    <span class="status-badge ${bookingForm.status === 'signed' ? 'status-signed' : 'status-pending'}">
-      ${bookingForm.status === 'signed' ? '✓ Signed' : bookingForm.status}
-    </span>
-  </div>
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 750px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPTS Training" style="height: 60px; margin-bottom: 10px;" />
+            <h1 style="color: #0f3d5e; margin: 10px 0 5px 0; font-size: 24px;">Booking Form</h1>
+            <span style="display: inline-block; padding: 6px 16px; border-radius: 4px; font-size: 14px; font-weight: bold; ${bookingForm.status === 'signed' ? 'background: #dcfce7; color: #166534;' : 'background: #fef3c7; color: #92400e;'}">
+              ${bookingForm.status === 'signed' ? 'SIGNED' : bookingForm.status.toUpperCase()}
+            </span>
+          </div>
 
-  <h2>Contact Information</h2>
-  <div class="section">
-    ${formData.customer_type === 'business' && formData.company_name ? `
-    <div class="field">
-      <div class="label">Company Name</div>
-      <div class="value">${formData.company_name}</div>
-    </div>
-    ` : ''}
-    <div class="field">
-      <div class="label">Contact Name</div>
-      <div class="value">${formData.contact_name || lead?.name || 'N/A'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Email</div>
-      <div class="value">${formData.contact_email || lead?.email || 'N/A'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Phone</div>
-      <div class="value">${formData.contact_phone || lead?.phone || 'N/A'}</div>
-    </div>
-    ${formData.address ? `
-    <div class="field">
-      <div class="label">Address</div>
-      <div class="value">${formData.address}${formData.postcode ? '<br>' + formData.postcode : ''}</div>
-    </div>
-    ` : ''}
-  </div>
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Contact Information</h2>
+            ${formData.customer_type === 'business' && formData.company_name ? `
+            <div style="margin-bottom: 10px;">
+              <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Company Name</div>
+              <div style="color: #1e293b; font-size: 14px;">${formData.company_name}</div>
+            </div>
+            ` : ''}
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Contact Name</div>
+                <div style="color: #1e293b; font-size: 14px;">${formData.contact_name || lead?.name || 'N/A'}</div>
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Email</div>
+                <div style="color: #1e293b; font-size: 14px;">${formData.contact_email || lead?.email || 'N/A'}</div>
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Phone</div>
+                <div style="color: #1e293b; font-size: 14px;">${formData.contact_phone || lead?.phone || 'N/A'}</div>
+              </div>
+            </div>
+            ${formData.address ? `
+            <div style="margin-top: 10px;">
+              <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Address</div>
+              <div style="color: #1e293b; font-size: 14px;">${formData.address}${formData.city ? ', ' + formData.city : ''}${formData.postcode ? ' ' + formData.postcode : ''}</div>
+            </div>
+            ` : ''}
+          </div>
 
-  <h2>Course Details</h2>
-  ${bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0 ?
-    bookingForm.booking_form_courses.map((course: any, index: number) => `
-      <div class="section" style="${index > 0 ? 'margin-top: 20px; padding-top: 20px; border-top: 2px solid #e2e8f0;' : ''}">
-        ${bookingForm.booking_form_courses.length > 1 ? `<h3 style="margin-top: 0; color: #475569;">Course ${index + 1}</h3>` : ''}
-        <div class="field">
-          <div class="label">Course Name</div>
-          <div class="value">${course.course_name}</div>
-        </div>
-        ${course.course_dates ? `
-        <div class="field">
-          <div class="label">Course Dates</div>
-          <div class="value">${course.course_dates}</div>
-        </div>
-        ` : ''}
-        ${course.course_venue ? `
-        <div class="field">
-          <div class="label">Venue</div>
-          <div class="value">${course.course_venue}</div>
-        </div>
-        ` : ''}
-        <div class="field">
-          <div class="label">Number of Delegates</div>
-          <div class="value">${course.number_of_delegates || 'N/A'}</div>
-        </div>
-        ${course.price ? `
-        <div class="field">
-          <div class="label">Price</div>
-          <div class="value">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)} + VAT</div>
-        </div>
-        ` : ''}
-      </div>
-    `).join('') : `
-    <div class="section">
-      <div class="field">
-        <div class="label">Course Name</div>
-        <div class="value">${formData.course_name || lead?.quoted_course || 'N/A'}</div>
-      </div>
-      <div class="field">
-        <div class="label">Course Dates</div>
-        <div class="value">${formData.course_dates || lead?.quoted_dates || 'N/A'}</div>
-      </div>
-      <div class="field">
-        <div class="label">Venue</div>
-        <div class="value">${formData.course_venue || lead?.quoted_venue || 'N/A'}</div>
-      </div>
-      <div class="field">
-        <div class="label">Number of Delegates</div>
-        <div class="value">${formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</div>
-      </div>
-    </div>
-  `}
-  ${formData.po_number ? `
-  <div class="section" style="margin-top: 10px;">
-    <div class="field">
-      <div class="label">PO Number</div>
-      <div class="value">${formData.po_number}</div>
-    </div>
-  </div>
-  ` : ''}
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Course Details</h2>
+            ${bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0 ?
+              bookingForm.booking_form_courses.map((course: any, index: number) => `
+                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #F28D00; margin-bottom: 15px;">
+                  ${bookingForm.booking_form_courses.length > 1 ? `<div style="font-weight: bold; color: #0f3d5e; margin-bottom: 10px;">Course ${index + 1}</div>` : ''}
+                  <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">${course.course_name}</div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
+                    ${course.course_dates ? `<div><span style="color: #64748b;">Dates:</span> <span style="color: #1e293b;">${course.course_dates}</span></div>` : ''}
+                    ${course.course_venue ? `<div><span style="color: #64748b;">Venue:</span> <span style="color: #1e293b;">${course.course_venue}</span></div>` : ''}
+                    <div><span style="color: #64748b;">Delegates:</span> <span style="color: #1e293b;">${course.number_of_delegates || 'N/A'}</span></div>
+                    ${course.price ? `<div><span style="color: #64748b;">Price:</span> <span style="color: #F28D00; font-weight: bold;">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)}${!course.vat_exempt ? ' + VAT' : ''}</span></div>` : ''}
+                  </div>
+                </div>
+              `).join('') : `
+              <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #F28D00;">
+                <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">${formData.course_name || lead?.quoted_course || 'N/A'}</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
+                  <div><span style="color: #64748b;">Dates:</span> <span style="color: #1e293b;">${formData.course_dates || lead?.quoted_dates || 'N/A'}</span></div>
+                  <div><span style="color: #64748b;">Venue:</span> <span style="color: #1e293b;">${formData.course_venue || lead?.quoted_venue || 'N/A'}</span></div>
+                  <div><span style="color: #64748b;">Delegates:</span> <span style="color: #1e293b;">${formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</span></div>
+                </div>
+              </div>
+            `}
+            ${formData.po_number ? `
+            <div style="margin-top: 15px;">
+              <span style="font-weight: bold; color: #64748b; font-size: 12px;">PO Number:</span>
+              <span style="color: #1e293b; font-size: 14px; margin-left: 8px;">${formData.po_number}</span>
+            </div>
+            ` : ''}
+          </div>
 
-  ${delegatesToDisplay && delegatesToDisplay.length > 0 ? `
-  <h2>Delegate Details</h2>
-  <div class="section">
-    ${delegatesToDisplay.map((delegate: any, index: number) => `
-      <div style="margin-bottom: 25px; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-        ${delegatesToDisplay.length > 1 ? `<h3 style="margin-top: 0; color: #475569;">${delegate.name || `Delegate ${index + 1}`}</h3>` : `<h3 style="margin-top: 0; color: #475569;">${delegate.name || 'Delegate'}</h3>`}
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-          ${delegate.name ? `
-          <div class="field">
-            <div class="label">Name</div>
-            <div class="value">${delegate.name}</div>
+          ${delegatesToDisplay && delegatesToDisplay.length > 0 ? `
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Delegate Details</h2>
+            ${delegatesToDisplay.map((delegate: any, index: number) => `
+              <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px;">
+                <div style="font-weight: bold; color: #0f3d5e; font-size: 15px; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                  ${delegate.name || `Delegate ${index + 1}`}
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
+                  ${delegate.email ? `<div style="min-width: 180px;"><span style="color: #64748b;">Email:</span> <span style="color: #1e293b;">${delegate.email}</span></div>` : ''}
+                  ${delegate.phone ? `<div style="min-width: 150px;"><span style="color: #64748b;">Phone:</span> <span style="color: #1e293b;">${delegate.phone}</span></div>` : ''}
+                  ${delegate.date_of_birth ? `<div style="min-width: 130px;"><span style="color: #64748b;">DOB:</span> <span style="color: #1e293b;">${delegate.date_of_birth}</span></div>` : ''}
+                  ${delegate.national_insurance ? `<div style="min-width: 150px;"><span style="color: #64748b;">NI Number:</span> <span style="color: #1e293b;">${delegate.national_insurance}</span></div>` : ''}
+                </div>
+                ${delegate.address ? `
+                <div style="margin-top: 10px; font-size: 13px;">
+                  <span style="color: #64748b;">Address:</span> <span style="color: #1e293b;">${delegate.address}${delegate.city ? ', ' + delegate.city : ''}${delegate.postcode ? ' ' + delegate.postcode : ''}</span>
+                </div>
+                ` : ''}
+                ${delegate.id && delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0 ? `
+                <div style="margin-top: 12px; padding: 10px; background: #dbeafe; border: 1px solid #93c5fd; border-radius: 6px;">
+                  <div style="font-weight: bold; color: #1e40af; font-size: 12px; margin-bottom: 5px;">Enrolled Courses:</div>
+                  <div style="color: #1e40af; font-size: 13px;">${delegateCourseMap[delegate.id].join(', ')}</div>
+                </div>
+                ` : ''}
+              </div>
+            `).join('')}
           </div>
           ` : ''}
-          ${delegate.email ? `
-          <div class="field">
-            <div class="label">Email</div>
-            <div class="value">${delegate.email}</div>
+
+          ${formData.special_requirements ? `
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Special Requirements</h2>
+            <div style="background: #fef3c7; padding: 12px; border-radius: 6px; font-size: 14px; color: #92400e;">
+              ${formData.special_requirements}
+            </div>
           </div>
           ` : ''}
-          ${delegate.phone ? `
-          <div class="field">
-            <div class="label">Phone</div>
-            <div class="value">${delegate.phone}</div>
+
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Terms Agreement</h2>
+            <div style="background: #dcfce7; padding: 15px; border-radius: 8px; border: 2px solid #86efac;">
+              <div style="color: #166534; font-size: 14px; font-weight: bold;">
+                The customer has read and agreed to the terms and conditions. They confirmed that the information provided is accurate and understand that this is a legally binding agreement.
+              </div>
+            </div>
+          </div>
+
+          ${bookingForm.signature_data ? `
+          <div style="margin-bottom: 25px;">
+            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Signature</h2>
+            <div style="background: #fff; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px;">
+              <img src="${bookingForm.signature_data}" alt="Signature" style="max-width: 300px; height: auto;" />
+              ${bookingForm.signed_at ? `<div style="margin-top: 10px; color: #64748b; font-size: 12px;">Signed on ${format(new Date(bookingForm.signed_at), 'PPpp')}</div>` : ''}
+            </div>
           </div>
           ` : ''}
-          ${delegate.date_of_birth ? `
-          <div class="field">
-            <div class="label">Date of Birth</div>
-            <div class="value">${delegate.date_of_birth}</div>
+
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
+              <div><strong>Sent:</strong> ${bookingForm.sent_at ? format(new Date(bookingForm.sent_at), 'PP') : 'N/A'}</div>
+              <div><strong>Signed:</strong> ${bookingForm.signed_at ? format(new Date(bookingForm.signed_at), 'PP') : 'Not signed'}</div>
+              <div><strong>Generated:</strong> ${format(new Date(), 'PP')}</div>
+            </div>
+            <div style="text-align: center; margin-top: 15px; color: #94a3b8; font-size: 11px;">
+              This is a digitally signed booking form from CPTS Training
+            </div>
           </div>
-          ` : ''}
-          ${delegate.national_insurance ? `
-          <div class="field">
-            <div class="label">National Insurance Number</div>
-            <div class="value">${delegate.national_insurance}</div>
-          </div>
-          ` : ''}
-          ${delegate.address ? `
-          <div class="field">
-            <div class="label">Address</div>
-            <div class="value">${delegate.address}${delegate.postcode ? '<br>' + delegate.postcode : ''}</div>
-          </div>
-          ` : ''}
         </div>
-        ${delegate.id && delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0 ? `
-        <div style="margin-top: 15px; padding: 12px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 6px;">
-          <div style="font-weight: bold; color: #1e40af; margin-bottom: 8px;">Enrolled Courses:</div>
-          <ul style="margin: 0; padding-left: 20px; color: #1e40af;">
-            ${delegateCourseMap[delegate.id].map((courseName: string) => `<li style="margin-bottom: 4px;">${courseName}</li>`).join('')}
-          </ul>
-        </div>
-        ` : ''}
-      </div>
-    `).join('')}
-  </div>
-  ` : ''}
+      `;
 
-  ${formData.delegate_names && !formData.delegates ? `
-  <h2>Delegate Names</h2>
-  <div class="section">
-    <div class="value" style="white-space: pre-wrap;">${formData.delegate_names}</div>
-  </div>
-  ` : ''}
+      const container = document.createElement('div');
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
 
-  ${formData.special_requirements ? `
-  <h2>Special Requirements</h2>
-  <div class="section">
-    <div class="value" style="white-space: pre-wrap;">${formData.special_requirements}</div>
-  </div>
-  ` : ''}
+      const fileName = `booking-form-${formData.contact_name || lead?.name || 'unknown'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
 
-  <h2>Terms and Conditions</h2>
-  <div class="section" style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-    <p style="font-weight: bold; margin-bottom: 12px;">Payment Terms:</p>
-    <ul style="margin-left: 20px; margin-bottom: 16px; line-height: 1.6;">
-      <li>Full payment is due 14 days prior to the course start date</li>
-      <li>Payment can be made by bank transfer or cheque</li>
-      <li>Purchase orders are accepted from approved accounts</li>
-    </ul>
+      const opt: any = {
+        margin: [10, 10, 10, 10],
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
 
-    <p style="font-weight: bold; margin-bottom: 12px;">Cancellation Policy:</p>
-    <ul style="margin-left: 20px; margin-bottom: 16px; line-height: 1.6;">
-      <li>Cancellations made more than 14 days before the course: Full refund minus £50 administration fee</li>
-      <li>Cancellations made 7-14 days before the course: 50% of course fee will be charged</li>
-      <li>Cancellations made less than 7 days before the course: Full course fee will be charged</li>
-      <li>Delegates may be substituted at any time without charge</li>
-    </ul>
+      await (html2pdf() as any).set(opt).from(container).save();
 
-    <p style="font-weight: bold; margin-bottom: 12px;">Course Changes:</p>
-    <ul style="margin-left: 20px; margin-bottom: 16px; line-height: 1.6;">
-      <li>We reserve the right to cancel or postpone courses due to insufficient bookings or circumstances beyond our control</li>
-      <li>In the event of cancellation by us, you will be offered an alternative date or full refund</li>
-      <li>We are not liable for any travel or accommodation costs incurred</li>
-    </ul>
-
-    <p style="font-weight: bold; margin-bottom: 12px;">Liability:</p>
-    <ul style="margin-left: 20px; margin-bottom: 16px; line-height: 1.6;">
-      <li>We accept no liability for loss or damage to delegates' personal property</li>
-      <li>Delegates attend courses at their own risk</li>
-      <li>We maintain appropriate insurance cover for our training activities</li>
-    </ul>
-
-    <p style="font-weight: bold; margin-bottom: 12px;">Data Protection:</p>
-    <ul style="margin-left: 20px; margin-bottom: 16px; line-height: 1.6;">
-      <li>Your information will be held securely and used only for course administration</li>
-      <li>We will not share your details with third parties without your consent</li>
-      <li>You may request access to or deletion of your data at any time</li>
-    </ul>
-
-    <p style="margin-top: 20px; padding: 15px; background: #dcfce7; border: 2px solid #86efac; border-radius: 6px; font-weight: bold; color: #166534;">
-      ✓ The customer has read and agreed to these terms and conditions. They confirmed that the information provided is accurate and understand that this is a legally binding agreement.
-    </p>
-  </div>
-
-  ${bookingForm.signature_data ? `
-  <h2>Signature</h2>
-  <div class="signature-box">
-    <img src="${bookingForm.signature_data}" alt="Signature" class="signature-img" />
-    ${bookingForm.signed_at ? `<p style="margin-top: 15px; color: #64748b; font-size: 14px;">Signed on ${format(new Date(bookingForm.signed_at), 'PPpp')}</p>` : ''}
-  </div>
-  ` : ''}
-
-  <h2>Form Information</h2>
-  <div class="section">
-    <div class="field">
-      <div class="label">Sent</div>
-      <div class="value">${bookingForm.sent_at ? format(new Date(bookingForm.sent_at), 'PP') : 'N/A'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Signed</div>
-      <div class="value">${bookingForm.signed_at ? format(new Date(bookingForm.signed_at), 'PP') : 'Not signed'}</div>
-    </div>
-    <div class="field">
-      <div class="label">Expires</div>
-      <div class="value">${bookingForm.expires_at ? format(new Date(bookingForm.expires_at), 'PP') : 'N/A'}</div>
-    </div>
-  </div>
-
-  <div class="footer">
-    <p>This is a digitally signed booking form. Generated on ${format(new Date(), 'PPpp')}</p>
-  </div>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const fileName = `booking-form-${formData.contact_name || lead?.name || 'unknown'}-${format(new Date(), 'yyyy-MM-dd')}.html`;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast.success('Booking form downloaded. Open in your browser and print to PDF if needed.');
+      document.body.removeChild(container);
+      toast.success('PDF downloaded successfully');
+    } catch (error) {
+      console.error('Failed to generate PDF:', error);
+      toast.error('Failed to generate PDF');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   if (loading) {
@@ -566,9 +460,14 @@ export default function BookingFormDetailPage() {
                 <Button
                   variant="outline"
                   onClick={downloadSignedForm}
+                  disabled={downloadingPdf}
                 >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Form
+                  {downloadingPdf ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
                 </Button>
               )}
               <Button
