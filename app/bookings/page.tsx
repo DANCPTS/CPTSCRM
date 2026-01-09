@@ -124,9 +124,12 @@ export default function BookingsPage() {
               const candidateName = booking.candidates
                 ? `${booking.candidates.first_name} ${booking.candidates.last_name}`
                 : null;
+              const enrolledNames = booking.enrolled_candidates
+                ? booking.enrolled_candidates.map((c: any) => `${c.first_name} ${c.last_name}`).join(', ')
+                : null;
 
-              const displayName = delegateNames || candidateName || bookerName || 'Unknown';
-              const showBookedBy = delegateNames && bookerName && !candidateName;
+              const displayName = delegateNames || enrolledNames || candidateName || bookerName || 'Unknown';
+              const showBookedBy = (delegateNames || enrolledNames) && bookerName && !candidateName;
 
               return (
               <Card key={booking.id} className="hover:shadow-sm transition-shadow">

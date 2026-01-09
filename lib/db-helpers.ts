@@ -66,6 +66,41 @@ export async function getBookings() {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
+
+  // For bookings without direct candidate_id, fetch enrolled candidates from candidate_courses
+  if (data) {
+    const bookingsWithoutCandidates = data.filter(b => !b.candidate_id && b.course_run_id);
+    if (bookingsWithoutCandidates.length > 0) {
+      const courseRunIds = bookingsWithoutCandidates.map(b => b.course_run_id);
+      const { data: enrolledCandidates } = await supabase
+        .from('candidate_courses')
+        .select('course_run_id, candidates!candidate_id(first_name, last_name, email)')
+        .in('course_run_id', courseRunIds)
+        .eq('status', 'enrolled');
+
+      if (enrolledCandidates) {
+        // Map enrolled candidates to bookings
+        const candidatesByRun = new Map<string, any[]>();
+        enrolledCandidates.forEach(ec => {
+          if (!candidatesByRun.has(ec.course_run_id)) {
+            candidatesByRun.set(ec.course_run_id, []);
+          }
+          candidatesByRun.get(ec.course_run_id)!.push(ec.candidates);
+        });
+
+        // Add enrolled candidates to bookings
+        data.forEach(booking => {
+          if (!booking.candidates && booking.course_run_id) {
+            const enrolled = candidatesByRun.get(booking.course_run_id);
+            if (enrolled && enrolled.length > 0) {
+              booking.enrolled_candidates = enrolled;
+            }
+          }
+        });
+      }
+    }
+  }
+
   return data;
 }
 
