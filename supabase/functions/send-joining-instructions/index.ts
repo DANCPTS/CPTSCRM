@@ -122,6 +122,16 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select('email, name')
+      .eq('id', leadId)
+      .maybeSingle();
+
+    if (leadError) {
+      throw new Error(`Failed to fetch lead: ${leadError.message}`);
+    }
+
     const { data: bookings, error: bookingsError } = await supabase
       .from('bookings')
       .select(`
@@ -154,6 +164,18 @@ Deno.serve(async (req: Request) => {
     const company = firstBooking.company;
     const contact = firstBooking.contact;
     const companyName = company?.name || 'N/A';
+
+    const recipientEmail = contact?.email || lead?.email || '';
+
+    if (!recipientEmail) {
+      return new Response(
+        JSON.stringify({ error: "No email address found for contact or lead" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const coursesHtml = bookings.map(booking => {
       const courseRun = booking.course_run;
@@ -304,7 +326,7 @@ Deno.serve(async (req: Request) => {
       : `Joining Instructions - ${firstBooking.course_run?.course?.title || 'Training Course'}`;
 
     await sendEmail(
-      contact?.email || '',
+      recipientEmail,
       emailSubject,
       emailHtml
     );
@@ -312,7 +334,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Joining instructions sent successfully"
+        message: `Joining instructions sent successfully to ${recipientEmail}`
       }),
       {
         status: 200,
