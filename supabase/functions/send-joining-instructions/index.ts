@@ -160,6 +160,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { data: bookingForm } = await supabase
+      .from('booking_forms')
+      .select('id')
+      .eq('lead_id', leadId)
+      .maybeSingle();
+
+    let delegates: any[] = [];
+    if (bookingForm) {
+      const { data: delegateData } = await supabase
+        .from('booking_form_delegates')
+        .select('*')
+        .eq('booking_form_id', bookingForm.id);
+      delegates = delegateData || [];
+    }
+
     const firstBooking = bookings[0];
     const company = firstBooking.company;
     const contact = firstBooking.contact;
@@ -177,6 +192,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const delegateNames = delegates.length > 0
+      ? delegates.map(d => d.name).join(', ')
+      : null;
+
     const coursesHtml = bookings.map(booking => {
       const courseRun = booking.course_run;
       const course = courseRun?.course;
@@ -186,6 +205,8 @@ Deno.serve(async (req: Request) => {
       let candidateName = 'TBC';
       if (candidate) {
         candidateName = `${candidate.first_name} ${candidate.last_name}`;
+      } else if (delegateNames) {
+        candidateName = delegateNames;
       }
 
       return `
@@ -205,7 +226,7 @@ Deno.serve(async (req: Request) => {
               <td>${courseRun?.location || 'Construction & Plant Training Services, Podington, NN29 7XA'}</td>
             </tr>
             <tr>
-              <td>Delegate Name:</td>
+              <td>Delegate Name${delegates.length > 1 ? 's' : ''}:</td>
               <td>${candidateName}</td>
             </tr>
             <tr>
