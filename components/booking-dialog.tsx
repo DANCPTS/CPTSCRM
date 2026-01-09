@@ -557,7 +557,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
           .insert([{
             course_id: courseId,
             start_date: newRunData.start_date,
-            end_date: newRunData.end_date || newRunData.start_date,
+            end_date: newRunData.end_date && newRunData.end_date.trim() !== '' ? newRunData.end_date : newRunData.start_date,
             location: newRunData.location,
             seats_total: newRunData.max_participants,
             seats_booked: 0,
@@ -574,7 +574,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
 
       if (isOtherRun) {
         selectedRunStartDate = newRunData.start_date;
-        selectedRunEndDate = newRunData.end_date || newRunData.start_date;
+        selectedRunEndDate = newRunData.end_date && newRunData.end_date.trim() !== '' ? newRunData.end_date : newRunData.start_date;
       } else {
         const selectedRun = courseRuns.find(r => r.id === courseRunId);
         if (selectedRun) {
