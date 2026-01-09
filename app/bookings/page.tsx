@@ -5,7 +5,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Link } from 'lucide-react';
+import { Plus, X, Link, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
@@ -21,12 +21,15 @@ import {
 import { getBookings, getDelegatesForBookings } from '@/lib/db-helpers';
 import { format, parseISO } from 'date-fns';
 import { BookingDialog } from '@/components/booking-dialog';
+import { EditBookingDialog } from '@/components/edit-booking-dialog';
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [delegateMap, setDelegateMap] = useState<Map<string, Map<string, string[]>>>(new Map());
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [bookingToEdit, setBookingToEdit] = useState<any>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<any>(null);
 
@@ -67,6 +70,11 @@ export default function BookingsPage() {
     confirmed: 'bg-blue-100 text-blue-800',
     completed: 'bg-green-100 text-green-800',
     cancelled: 'bg-red-100 text-red-800',
+  };
+
+  const handleEditBooking = (booking: any) => {
+    setBookingToEdit(booking);
+    setEditDialogOpen(true);
   };
 
   const handleCancelBooking = (booking: any, e: React.MouseEvent) => {
@@ -132,7 +140,11 @@ export default function BookingsPage() {
               const showBookedBy = (delegateNames || enrolledNames) && bookerName && !candidateName;
 
               return (
-              <Card key={booking.id} className="hover:shadow-sm transition-shadow">
+              <Card
+                key={booking.id}
+                className="hover:shadow-sm transition-shadow cursor-pointer hover:border-slate-300"
+                onClick={() => handleEditBooking(booking)}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
@@ -191,6 +203,17 @@ export default function BookingsPage() {
                       <Badge className={statusColors[booking.status]}>
                         {booking.status}
                       </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditBooking(booking);
+                        }}
+                        className="text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                       {booking.status !== 'cancelled' && booking.status !== 'completed' && (
                         <Button
                           variant="ghost"
@@ -217,6 +240,16 @@ export default function BookingsPage() {
           setDialogOpen(false);
           loadBookings();
         }}
+      />
+
+      <EditBookingDialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setBookingToEdit(null);
+        }}
+        onSuccess={loadBookings}
+        booking={bookingToEdit}
       />
 
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
