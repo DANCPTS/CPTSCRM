@@ -5,8 +5,9 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, ArrowUpDown, Trash2 } from 'lucide-react';
+import { Plus, ArrowUpDown, Trash2, Pencil } from 'lucide-react';
 import { getContacts } from '@/lib/db-helpers';
+import { ContactDialog } from '@/components/contact-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +35,8 @@ export default function ContactsPage() {
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [contactToDelete, setContactToDelete] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [contactToEdit, setContactToEdit] = useState<any | null>(null);
 
   useEffect(() => {
     loadContacts();
@@ -48,6 +51,16 @@ export default function ContactsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditContact = (contact: any) => {
+    setContactToEdit(contact);
+    setDialogOpen(true);
+  };
+
+  const handleAddContact = () => {
+    setContactToEdit(null);
+    setDialogOpen(true);
   };
 
   const handleDeleteContact = async () => {
@@ -159,7 +172,7 @@ export default function ContactsPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button>
+            <Button onClick={handleAddContact}>
               <Plus className="mr-2 h-4 w-4" />
               Add Contact
             </Button>
@@ -173,7 +186,11 @@ export default function ContactsPage() {
         ) : (
           <div className="space-y-2">
             {sortedContacts.map(contact => (
-              <Card key={contact.id} className="hover:shadow-sm transition-shadow">
+              <Card
+                key={contact.id}
+                className="hover:shadow-sm transition-shadow cursor-pointer hover:border-slate-300"
+                onClick={() => handleEditContact(contact)}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
@@ -181,17 +198,30 @@ export default function ContactsPage() {
                         {contact.first_name} {contact.last_name}
                       </h3>
                       <p className="text-sm text-slate-600">
-                        {contact.email} • {contact.phone}
+                        {contact.email} {contact.phone && `• ${contact.phone}`}
                         {contact.companies && ` • ${contact.companies.name}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{contact.language}</Badge>
-                      {contact.gdpr_consent && <Badge>GDPR ✓</Badge>}
+                      {contact.gdpr_consent && <Badge>GDPR</Badge>}
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => setContactToDelete(contact)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditContact(contact);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 text-slate-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setContactToDelete(contact);
+                        }}
                       >
                         <Trash2 className="h-4 w-4 text-red-600" />
                       </Button>
@@ -203,6 +233,16 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      <ContactDialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          setContactToEdit(null);
+        }}
+        onSuccess={loadContacts}
+        contact={contactToEdit}
+      />
 
       <AlertDialog open={!!contactToDelete} onOpenChange={(open) => !open && setContactToDelete(null)}>
         <AlertDialogContent>
