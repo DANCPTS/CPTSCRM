@@ -210,7 +210,7 @@ export default function LeadsPage() {
     try {
       const { data, error } = await supabase
         .from('booking_forms')
-        .select('*')
+        .select('*, booking_form_courses(id)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -241,7 +241,8 @@ export default function LeadsPage() {
     try {
       const { data, error } = await supabase
         .from('bookings')
-        .select('id, lead_id, invoice_sent, invoice_no, joining_instructions_sent');
+        .select('id, lead_id, invoice_sent, invoice_no, joining_instructions_sent, status')
+        .neq('status', 'cancelled');
 
       if (error) throw error;
 
@@ -249,7 +250,18 @@ export default function LeadsPage() {
       data?.forEach(booking => {
         if (booking.lead_id) {
           if (!bookingsByLead[booking.lead_id]) {
-            bookingsByLead[booking.lead_id] = booking;
+            bookingsByLead[booking.lead_id] = {
+              ...booking,
+              bookingCount: 1,
+            };
+          } else {
+            bookingsByLead[booking.lead_id].bookingCount += 1;
+            if (!bookingsByLead[booking.lead_id].invoice_no && booking.invoice_no) {
+              bookingsByLead[booking.lead_id].invoice_no = booking.invoice_no;
+            }
+            if (!bookingsByLead[booking.lead_id].joining_instructions_sent && booking.joining_instructions_sent) {
+              bookingsByLead[booking.lead_id].joining_instructions_sent = true;
+            }
           }
         }
       });
@@ -799,9 +811,12 @@ export default function LeadsPage() {
                                 const hasBooking = leadBookings[lead.id];
                                 const hasInvoiceNo = hasBooking?.invoice_no && hasBooking.invoice_no.trim() !== '';
                                 const joiningInstructionsSent = hasBooking?.joining_instructions_sent;
+                                const courseCount = bookingForm?.booking_form_courses?.length || 1;
+                                const bookingCount = hasBooking?.bookingCount || 0;
+                                const allBookingsCreated = bookingCount >= courseCount;
 
                                 // STEP 5: Final state - Booked On (joining instructions sent)
-                                if (hasBooking && joiningInstructionsSent) {
+                                if (hasBooking && allBookingsCreated && joiningInstructionsSent) {
                                   return (
                                     <div className="space-y-2">
                                       <Button
@@ -838,8 +853,8 @@ export default function LeadsPage() {
                                   );
                                 }
 
-                                // STEP 4: Send Joining Instructions (booking created, invoice number exists)
-                                if (hasBooking && hasInvoiceNo && !joiningInstructionsSent) {
+                                // STEP 4: Send Joining Instructions (all bookings created, invoice number exists)
+                                if (hasBooking && allBookingsCreated && hasInvoiceNo && !joiningInstructionsSent) {
                                   return (
                                     <div className="space-y-2">
                                       <div className="text-xs text-slate-600 mb-1">
@@ -858,8 +873,9 @@ export default function LeadsPage() {
                                   );
                                 }
 
-                                // STEP 3: Create Booking (form signed, invoice sent)
-                                if (hasSignedForm && invoiceSubmitted && !hasBooking) {
+                                // STEP 3: Create Booking (form signed, invoice sent, not all bookings created yet)
+                                if (hasSignedForm && invoiceSubmitted && !allBookingsCreated) {
+                                  const remaining = courseCount - bookingCount;
                                   return (
                                     <Button
                                       size="sm"
@@ -870,7 +886,9 @@ export default function LeadsPage() {
                                       }}
                                     >
                                       <Calendar className="mr-1 h-3 w-3" />
-                                      Create Booking
+                                      {courseCount > 1
+                                        ? `Create Bookings (${bookingCount}/${courseCount})`
+                                        : 'Create Booking'}
                                     </Button>
                                   );
                                 }
