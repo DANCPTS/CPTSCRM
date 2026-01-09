@@ -130,9 +130,8 @@ export default function BookingFormPage() {
       } else if (coursesData && coursesData.length > 0) {
         setCourses(coursesData);
 
-        const totalDelegatesNeeded = coursesData.reduce((sum, course) =>
-          Math.max(sum, course.number_of_delegates), 0
-        );
+        const totalDelegatesNeeded = data.total_delegates ||
+          coursesData.reduce((sum, course) => sum + course.number_of_delegates, 0);
 
         const autoSelectCourses = coursesData.length === 1 ? [coursesData[0].id] : [];
 
@@ -330,7 +329,7 @@ export default function BookingFormPage() {
 
   const getMinimumDelegatesRequired = () => {
     if (courses.length === 0) return 1;
-    return Math.max(...courses.map(c => c.number_of_delegates));
+    return courses.reduce((sum, c) => sum + c.number_of_delegates, 0);
   };
 
   const getCourseValidationStatus = (courseId: string) => {
@@ -1157,7 +1156,7 @@ export default function BookingFormPage() {
                   ))}
                 </div>
 
-                {getMinimumDelegatesRequired() > 1 && (
+                {courses.length > 0 && (
                   <div className="mt-6 flex justify-center">
                     <Button
                       type="button"
