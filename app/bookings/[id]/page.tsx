@@ -41,6 +41,8 @@ export default function BookingFormDetailPage() {
   const [selectedCourseIndex, setSelectedCourseIndex] = useState<number | null>(null);
   const [createdBookings, setCreatedBookings] = useState<Record<string, boolean>>({});
   const [bookingWasCreated, setBookingWasCreated] = useState(false);
+  const [delegates, setDelegates] = useState<any[]>([]);
+  const [delegateCourseMap, setDelegateCourseMap] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     loadBookingForm();
@@ -85,6 +87,38 @@ export default function BookingFormDetailPage() {
       if (error) throw error;
 
       setBookingForm(data);
+
+      // Load delegates and their course assignments
+      const { data: delegatesData, error: delegatesError } = await supabase
+        .from('booking_form_delegates')
+        .select('*')
+        .eq('booking_form_id', bookingFormId)
+        .order('created_at');
+
+      if (delegatesError) throw delegatesError;
+      setDelegates(delegatesData || []);
+
+      // Load delegate-course mappings
+      const { data: mappingsData, error: mappingsError } = await supabase
+        .from('booking_form_delegate_courses')
+        .select(`
+          delegate_id,
+          course_id,
+          booking_form_courses(id, course_name)
+        `)
+        .eq('booking_form_id', bookingFormId);
+
+      if (mappingsError) throw mappingsError;
+
+      // Build a map of delegate_id to array of course names
+      const map: Record<string, string[]> = {};
+      mappingsData?.forEach((mapping: any) => {
+        if (!map[mapping.delegate_id]) {
+          map[mapping.delegate_id] = [];
+        }
+        map[mapping.delegate_id].push(mapping.booking_form_courses?.course_name || 'Unknown Course');
+      });
+      setDelegateCourseMap(map);
 
       setInvoiceSent(data?.invoice_sent || false);
       setInvoiceNumber(data?.invoice_number || '');
@@ -198,6 +232,9 @@ export default function BookingFormDetailPage() {
   const downloadSignedForm = () => {
     const formData = bookingForm.form_data || {};
     const lead = bookingForm.leads;
+
+    // Use delegates from database if available, otherwise fall back to form_data
+    const delegatesToDisplay = delegates.length > 0 ? delegates : formData.delegates;
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -318,17 +355,29 @@ export default function BookingFormDetailPage() {
   </div>
   ` : ''}
 
-  ${formData.delegates && formData.delegates.length > 0 ? `
+  ${delegatesToDisplay && delegatesToDisplay.length > 0 ? `
   <h2>Delegate Details</h2>
   <div class="section">
-    ${formData.delegates.map((delegate: any, index: number) => `
+    ${delegatesToDisplay.map((delegate: any, index: number) => `
       <div style="margin-bottom: 25px; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-        ${formData.delegates.length > 1 ? `<h3 style="margin-top: 0; color: #475569;">Delegate ${index + 1}</h3>` : ''}
+        ${delegatesToDisplay.length > 1 ? `<h3 style="margin-top: 0; color: #475569;">${delegate.name || `Delegate ${index + 1}`}</h3>` : `<h3 style="margin-top: 0; color: #475569;">${delegate.name || 'Delegate'}</h3>`}
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           ${delegate.name ? `
           <div class="field">
             <div class="label">Name</div>
             <div class="value">${delegate.name}</div>
+          </div>
+          ` : ''}
+          ${delegate.email ? `
+          <div class="field">
+            <div class="label">Email</div>
+            <div class="value">${delegate.email}</div>
+          </div>
+          ` : ''}
+          ${delegate.phone ? `
+          <div class="field">
+            <div class="label">Phone</div>
+            <div class="value">${delegate.phone}</div>
           </div>
           ` : ''}
           ${delegate.date_of_birth ? `
@@ -350,6 +399,14 @@ export default function BookingFormDetailPage() {
           </div>
           ` : ''}
         </div>
+        ${delegate.id && delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0 ? `
+        <div style="margin-top: 15px; padding: 12px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 6px;">
+          <div style="font-weight: bold; color: #1e40af; margin-bottom: 8px;">Enrolled Courses:</div>
+          <ul style="margin: 0; padding-left: 20px; color: #1e40af;">
+            ${delegateCourseMap[delegate.id].map((courseName: string) => `<li style="margin-bottom: 4px;">${courseName}</li>`).join('')}
+          </ul>
+        </div>
+        ` : ''}
       </div>
     `).join('')}
   </div>
@@ -708,7 +765,7 @@ export default function BookingFormDetailPage() {
             </CardContent>
           </Card>
 
-          {formData.delegates && formData.delegates.length > 0 && (
+          {(delegates.length > 0 || (formData.delegates && formData.delegates.length > 0)) && (
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -718,42 +775,103 @@ export default function BookingFormDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  {formData.delegates.map((delegate: any, index: number) => (
-                    <div key={index} className="border-b pb-4 last:border-0 last:pb-0">
-                      <h4 className="font-semibold text-slate-900 mb-3">
-                        Delegate {formData.delegates.length > 1 ? index + 1 : ''}
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {delegate.name && (
-                          <div>
-                            <div className="text-sm text-slate-500">Name</div>
-                            <p className="font-medium text-slate-900">{delegate.name}</p>
-                          </div>
-                        )}
-                        {delegate.date_of_birth && (
-                          <div>
-                            <div className="text-sm text-slate-500">Date of Birth</div>
-                            <p className="font-medium text-slate-900">{delegate.date_of_birth}</p>
-                          </div>
-                        )}
-                        {delegate.national_insurance && (
-                          <div>
-                            <div className="text-sm text-slate-500">National Insurance Number</div>
-                            <p className="font-medium text-slate-900">{delegate.national_insurance}</p>
-                          </div>
-                        )}
-                        {delegate.address && (
-                          <div>
-                            <div className="text-sm text-slate-500">Address</div>
-                            <p className="font-medium text-slate-900">{delegate.address}</p>
-                            {delegate.postcode && (
-                              <p className="font-medium text-slate-900 mt-1">{delegate.postcode}</p>
-                            )}
+                  {delegates.length > 0 ? (
+                    delegates.map((delegate: any, index: number) => (
+                      <div key={delegate.id} className="border-b pb-4 last:border-0 last:pb-0">
+                        <h4 className="font-semibold text-slate-900 mb-3">
+                          {delegate.name || `Delegate ${index + 1}`}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {delegate.name && (
+                            <div>
+                              <div className="text-sm text-slate-500">Name</div>
+                              <p className="font-medium text-slate-900">{delegate.name}</p>
+                            </div>
+                          )}
+                          {delegate.email && (
+                            <div>
+                              <div className="text-sm text-slate-500">Email</div>
+                              <p className="font-medium text-slate-900">{delegate.email}</p>
+                            </div>
+                          )}
+                          {delegate.phone && (
+                            <div>
+                              <div className="text-sm text-slate-500">Phone</div>
+                              <p className="font-medium text-slate-900">{delegate.phone}</p>
+                            </div>
+                          )}
+                          {delegate.date_of_birth && (
+                            <div>
+                              <div className="text-sm text-slate-500">Date of Birth</div>
+                              <p className="font-medium text-slate-900">{delegate.date_of_birth}</p>
+                            </div>
+                          )}
+                          {delegate.national_insurance && (
+                            <div>
+                              <div className="text-sm text-slate-500">National Insurance Number</div>
+                              <p className="font-medium text-slate-900">{delegate.national_insurance}</p>
+                            </div>
+                          )}
+                          {delegate.address && (
+                            <div>
+                              <div className="text-sm text-slate-500">Address</div>
+                              <p className="font-medium text-slate-900">{delegate.address}</p>
+                              {delegate.postcode && (
+                                <p className="font-medium text-slate-900 mt-1">{delegate.postcode}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0 && (
+                          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="text-sm font-medium text-blue-900 mb-2">Enrolled Courses:</div>
+                            <ul className="list-disc list-inside space-y-1">
+                              {delegateCourseMap[delegate.id].map((courseName: string, idx: number) => (
+                                <li key={idx} className="text-sm text-blue-800">{courseName}</li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    formData.delegates.map((delegate: any, index: number) => (
+                      <div key={index} className="border-b pb-4 last:border-0 last:pb-0">
+                        <h4 className="font-semibold text-slate-900 mb-3">
+                          Delegate {formData.delegates.length > 1 ? index + 1 : ''}
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {delegate.name && (
+                            <div>
+                              <div className="text-sm text-slate-500">Name</div>
+                              <p className="font-medium text-slate-900">{delegate.name}</p>
+                            </div>
+                          )}
+                          {delegate.date_of_birth && (
+                            <div>
+                              <div className="text-sm text-slate-500">Date of Birth</div>
+                              <p className="font-medium text-slate-900">{delegate.date_of_birth}</p>
+                            </div>
+                          )}
+                          {delegate.national_insurance && (
+                            <div>
+                              <div className="text-sm text-slate-500">National Insurance Number</div>
+                              <p className="font-medium text-slate-900">{delegate.national_insurance}</p>
+                            </div>
+                          )}
+                          {delegate.address && (
+                            <div>
+                              <div className="text-sm text-slate-500">Address</div>
+                              <p className="font-medium text-slate-900">{delegate.address}</p>
+                              {delegate.postcode && (
+                                <p className="font-medium text-slate-900 mt-1">{delegate.postcode}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
