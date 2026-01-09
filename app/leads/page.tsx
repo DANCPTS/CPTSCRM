@@ -897,15 +897,26 @@ export default function LeadsPage() {
                                 // STEP 2: Send Invoice (form signed, no invoice yet)
                                 if (hasSignedForm && !invoiceSubmitted) {
                                   return (
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      className="w-full text-xs"
-                                      onClick={(e) => handleInvoice(lead, e)}
-                                    >
-                                      <FileText className="mr-1 h-3 w-3" />
-                                      Send Invoice
-                                    </Button>
+                                    <div className="space-y-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="w-full text-xs"
+                                        onClick={(e) => viewBookingForm(lead, e)}
+                                      >
+                                        <Eye className="mr-1 h-3 w-3" />
+                                        View Form
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="default"
+                                        className="w-full text-xs"
+                                        onClick={(e) => handleInvoice(lead, e)}
+                                      >
+                                        <FileText className="mr-1 h-3 w-3" />
+                                        Send Invoice
+                                      </Button>
+                                    </div>
                                   );
                                 }
 
