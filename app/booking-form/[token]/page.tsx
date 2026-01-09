@@ -130,12 +130,9 @@ export default function BookingFormPage() {
       } else if (coursesData && coursesData.length > 0) {
         setCourses(coursesData);
 
-        const totalDelegatesNeeded = data.total_delegates ||
-          coursesData.reduce((sum, course) => sum + course.number_of_delegates, 0);
-
         const autoSelectCourses = coursesData.length === 1 ? [coursesData[0].id] : [];
 
-        setDelegates(Array(totalDelegatesNeeded).fill(null).map(() => ({
+        setDelegates([{
           name: '',
           email: '',
           phone: '',
@@ -148,9 +145,9 @@ export default function BookingFormPage() {
           cpcs_card_number: '',
           npors_card_number: '',
           selectedCourses: autoSelectCourses,
-        })));
+        }]);
 
-        setSameAsContact(Array(totalDelegatesNeeded).fill(false));
+        setSameAsContact([false]);
       }
 
       if (data.leads) {
@@ -328,8 +325,7 @@ export default function BookingFormPage() {
   };
 
   const getMinimumDelegatesRequired = () => {
-    if (courses.length === 0) return 1;
-    return courses.reduce((sum, c) => sum + c.number_of_delegates, 0);
+    return 1;
   };
 
   const getCourseValidationStatus = (courseId: string) => {
@@ -359,8 +355,8 @@ export default function BookingFormPage() {
 
     for (let i = 0; i < delegates.length; i++) {
       const delegate = delegates[i];
-      if (!delegate.name || !delegate.national_insurance || !delegate.date_of_birth || !delegate.address || !delegate.postcode) {
-        toast.error(`Please complete all required fields for Delegate ${i + 1}`);
+      if (!delegate.name || !delegate.national_insurance || !delegate.date_of_birth) {
+        toast.error(`Please complete all required fields for Delegate ${i + 1} (Name, NI Number, Date of Birth)`);
         return;
       }
 
@@ -398,9 +394,9 @@ export default function BookingFormPage() {
         phone: delegate.phone || null,
         national_insurance: delegate.national_insurance,
         date_of_birth: delegate.date_of_birth,
-        address: delegate.address,
+        address: delegate.address || null,
         city: delegate.city || null,
-        postcode: delegate.postcode,
+        postcode: delegate.postcode || null,
         citb_hse_number: delegate.citb_hse_number || null,
         cpcs_card_number: delegate.cpcs_card_number || null,
         npors_card_number: delegate.npors_card_number || null,
@@ -999,7 +995,7 @@ export default function BookingFormPage() {
                           </div>
 
                           <div className="space-y-2 md:col-span-2">
-                            <Label htmlFor={`delegate_address_${index}`}>Home Address *</Label>
+                            <Label htmlFor={`delegate_address_${index}`}>Home Address</Label>
                             <Textarea
                               id={`delegate_address_${index}`}
                               value={delegate.address}
@@ -1009,7 +1005,7 @@ export default function BookingFormPage() {
                                 setDelegates(newDelegates);
                               }}
                               rows={2}
-                              required
+                              placeholder="Optional"
                             />
                           </div>
 
@@ -1023,11 +1019,12 @@ export default function BookingFormPage() {
                                 newDelegates[index].city = e.target.value;
                                 setDelegates(newDelegates);
                               }}
+                              placeholder="Optional"
                             />
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor={`delegate_postcode_${index}`}>Postcode *</Label>
+                            <Label htmlFor={`delegate_postcode_${index}`}>Postcode</Label>
                             <Input
                               id={`delegate_postcode_${index}`}
                               value={delegate.postcode}
@@ -1036,7 +1033,7 @@ export default function BookingFormPage() {
                                 newDelegates[index].postcode = e.target.value.toUpperCase();
                                 setDelegates(newDelegates);
                               }}
-                              required
+                              placeholder="Optional"
                             />
                           </div>
 
