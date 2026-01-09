@@ -92,6 +92,40 @@ export default function BookingFormDetailPage() {
       setPaymentType(data?.payment_type || 'invoice');
       setPaymentLink(data?.payment_link || '');
 
+      if (data?.lead_id && data?.booking_form_courses?.length > 0) {
+        const { data: existingBookings } = await supabase
+          .from('bookings')
+          .select(`
+            id,
+            course_run_id,
+            course_runs(
+              course_id,
+              courses(title)
+            )
+          `)
+          .eq('lead_id', data.lead_id)
+          .neq('status', 'cancelled');
+
+        if (existingBookings && existingBookings.length > 0) {
+          const existingMap: Record<string, boolean> = {};
+
+          for (const booking of existingBookings) {
+            const courseTitle = (booking.course_runs as any)?.courses?.title;
+            if (courseTitle) {
+              const matchingCourse = data.booking_form_courses.find(
+                (bfc: any) => bfc.course_name?.toLowerCase().includes(courseTitle.toLowerCase()) ||
+                              courseTitle.toLowerCase().includes(bfc.course_name?.toLowerCase())
+              );
+              if (matchingCourse) {
+                existingMap[matchingCourse.id] = true;
+              }
+            }
+          }
+
+          setCreatedBookings(prev => ({ ...prev, ...existingMap }));
+        }
+      }
+
       if (data?.form_data?.delegates && data.form_data.delegates.length > 0) {
         const delegate = data.form_data.delegates[0];
         const delegateName = delegate.name;
