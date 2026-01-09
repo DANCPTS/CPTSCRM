@@ -87,6 +87,10 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
   }, []);
 
   useEffect(() => {
+    // Only reset form data when the dialog is opened with a different lead
+    // Don't reset when just switching tabs or refocusing
+    if (!open) return;
+
     if (lead) {
       setFormData({
         name: lead.name || '',
@@ -138,7 +142,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       setPreviousStatus('new');
       setProposalCourses([]);
     }
-  }, [lead, open, userProfile]);
+  }, [lead, userProfile]);
 
   const loadUsers = async () => {
     const { data } = await supabase
@@ -409,8 +413,8 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={onClose} modal={true}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{lead ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
           <DialogDescription>
