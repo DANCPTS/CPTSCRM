@@ -48,6 +48,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
   const [duplicateWarnings, setDuplicateWarnings] = useState<any[]>([]);
   const [preSearchQuery, setPreSearchQuery] = useState('');
   const [preSearchResults, setPreSearchResults] = useState<any[]>([]);
+  const [hasAutoFilledFromLead, setHasAutoFilledFromLead] = useState(false);
 
   const [bookingData, setBookingData] = useState({
     contact_id: '',
@@ -131,28 +132,95 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
 
     if (prefillData.candidateId) {
       setBookingData(prev => ({ ...prev, candidate_id: prefillData.candidateId || '' }));
+      setClientType('existing');
       setBookingType('individual');
+      setHasAutoFilledFromLead(true);
+      return;
     }
 
-    if (prefillData.courseName) {
-      const matchingCourse = courses.find(c =>
-        c.title.toLowerCase().includes(prefillData.courseName!.toLowerCase())
-      );
-      if (matchingCourse) {
-        setBookingData(prev => ({ ...prev, course_id: matchingCourse.id }));
-      }
-    }
+    let foundContact = false;
+    let foundCompany = false;
+    let companyId = '';
 
     if (prefillData.companyName) {
-      const matchingCompany = companies.find(c =>
-        c.name.toLowerCase().includes(prefillData.companyName!.toLowerCase())
-      );
+      const { data: matchingCompany } = await supabase
+        .from('companies')
+        .select('id, name')
+        .ilike('name', `%${prefillData.companyName}%`)
+        .limit(1)
+        .maybeSingle();
+
       if (matchingCompany) {
+        companyId = matchingCompany.id;
+        foundCompany = true;
         setBookingData(prev => ({ ...prev, company_id: matchingCompany.id }));
       }
     }
 
-    if (!prefillData.candidateId && (prefillData.contactName || prefillData.contactEmail)) {
+    if (prefillData.contactEmail) {
+      const { data: matchingContact } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, email, company_id')
+        .ilike('email', prefillData.contactEmail)
+        .limit(1)
+        .maybeSingle();
+
+      if (matchingContact) {
+        foundContact = true;
+        setClientType('existing');
+        setBookingType('company');
+        setHasAutoFilledFromLead(true);
+        setBookingData(prev => ({
+          ...prev,
+          contact_id: matchingContact.id,
+          company_id: matchingContact.company_id || companyId,
+        }));
+
+        if (!matchingContact.company_id && !companyId) {
+          setBookingType('individual');
+          const { data: matchingCandidate } = await supabase
+            .from('candidates')
+            .select('id')
+            .ilike('email', prefillData.contactEmail!)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle();
+
+          if (matchingCandidate) {
+            setBookingData(prev => ({ ...prev, candidate_id: matchingCandidate.id }));
+          }
+        }
+      }
+    }
+
+    if (!foundContact && prefillData.contactName) {
+      const [firstName, ...lastNameParts] = prefillData.contactName.split(' ');
+      const lastName = lastNameParts.join(' ');
+
+      if (firstName && lastName) {
+        const { data: matchingContact } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email, company_id')
+          .ilike('first_name', firstName)
+          .ilike('last_name', lastName)
+          .limit(1)
+          .maybeSingle();
+
+        if (matchingContact) {
+          foundContact = true;
+          setClientType('existing');
+          setBookingType('company');
+          setHasAutoFilledFromLead(true);
+          setBookingData(prev => ({
+            ...prev,
+            contact_id: matchingContact.id,
+            company_id: matchingContact.company_id || companyId,
+          }));
+        }
+      }
+    }
+
+    if (!foundContact) {
       const [firstName, ...lastNameParts] = (prefillData.contactName || '').split(' ');
       const lastName = lastNameParts.join(' ');
 
@@ -163,17 +231,19 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
         email: prefillData.contactEmail || '',
         phone: prefillData.contactPhone || '',
         language: 'EN',
-        company_id: '',
+        company_id: companyId || '',
       });
 
-      if (prefillData.companyName) {
+      if (prefillData.companyName && !foundCompany) {
         setIsIndividual(false);
         setNewCompanyData(prev => ({
           ...prev,
           name: prefillData.companyName || '',
         }));
-      } else {
+      } else if (!prefillData.companyName) {
         setIsIndividual(true);
+      } else {
+        setIsIndividual(false);
       }
     }
   };
@@ -715,44 +785,57 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     setBookingType('company');
     setOverlapWarning(null);
     setConfirmedOverlap(false);
+    setHasAutoFilledFromLead(false);
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>New Booking</DialogTitle>
-          <DialogDescription>Create a new course booking</DialogDescription>
-        </DialogHeader>
-
-        {prefillData && (
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
-            <div className="flex items-center gap-2 text-sm text-amber-700 font-semibold mb-2">
-              <Calendar className="h-4 w-4" />
-              Booking Details
-            </div>
-            <div className="space-y-1">
-              {prefillData.courseName ? (
-                <div className="font-semibold text-amber-900">Course: {prefillData.courseName}</div>
-              ) : (
-                <div className="font-semibold text-amber-900">Course: Not specified - select below</div>
-              )}
-              {prefillData.courseDates && (
-                <div className="text-sm text-amber-800">Dates: {prefillData.courseDates}</div>
-              )}
-              {prefillData.contactName && (
-                <div className="text-sm text-amber-800">Delegate: {prefillData.contactName}</div>
-              )}
-              {prefillData.companyName && (
-                <div className="text-sm text-amber-800">Company: {prefillData.companyName}</div>
-              )}
-              {prefillData.invoiceNumber && (
-                <div className="text-sm text-amber-800">Invoice: {prefillData.invoiceNumber}</div>
-              )}
-            </div>
+  const renderClientSection = () => {
+    if (hasAutoFilledFromLead) {
+      return (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center gap-2 text-green-800 font-medium mb-2">
+            <Users className="h-4 w-4" />
+            Client Details (Auto-filled)
           </div>
-        )}
+          <div className="text-sm text-green-700">
+            {bookingType === 'company' ? (
+              <>
+                <p>
+                  <span className="font-medium">Contact:</span>{' '}
+                  {contacts.find(c => c.id === bookingData.contact_id)
+                    ? `${contacts.find(c => c.id === bookingData.contact_id)?.first_name} ${contacts.find(c => c.id === bookingData.contact_id)?.last_name}`
+                    : prefillData?.contactName || 'Loading...'}
+                </p>
+                {bookingData.company_id && (
+                  <p>
+                    <span className="font-medium">Company:</span>{' '}
+                    {companies.find(c => c.id === bookingData.company_id)?.name || prefillData?.companyName || 'Loading...'}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p>
+                <span className="font-medium">Candidate:</span>{' '}
+                {candidates.find(c => c.id === bookingData.candidate_id)
+                  ? `${candidates.find(c => c.id === bookingData.candidate_id)?.first_name} ${candidates.find(c => c.id === bookingData.candidate_id)?.last_name}`
+                  : prefillData?.contactName || 'Loading...'}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="text-green-700 p-0 h-auto mt-2"
+            onClick={() => setHasAutoFilledFromLead(false)}
+          >
+            Change client selection
+          </Button>
+        </div>
+      );
+    }
 
+    return (
+      <>
         <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
           <div className="flex items-center gap-2 mb-2">
             <Search className="h-4 w-4 text-slate-600" />
@@ -780,8 +863,8 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                     </div>
                     <div className="text-xs text-slate-600 truncate">
                       {result.email && `${result.email}`}
-                      {result.phone && ` • ${result.phone}`}
-                      {result.companies?.name && ` • ${result.companies.name}`}
+                      {result.phone && ` - ${result.phone}`}
+                      {result.companies?.name && ` - ${result.companies.name}`}
                     </div>
                   </div>
                   <Button
@@ -798,245 +881,244 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Tabs value={clientType} onValueChange={(v) => setClientType(v as 'existing' | 'new')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="existing">
-                <Users className="h-4 w-4 mr-2" />
-                Existing Client
-              </TabsTrigger>
-              <TabsTrigger value="new">
-                <UserPlus className="h-4 w-4 mr-2" />
-                New Client
-              </TabsTrigger>
-            </TabsList>
+        <Tabs value={clientType} onValueChange={(v) => setClientType(v as 'existing' | 'new')}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="existing">
+              <Users className="h-4 w-4 mr-2" />
+              Existing Client
+            </TabsTrigger>
+            <TabsTrigger value="new">
+              <UserPlus className="h-4 w-4 mr-2" />
+              New Client
+            </TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="existing" className="space-y-4 mt-4">
-              <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
-                <Label className="mb-2 block">Booking Type</Label>
-                <div className="flex gap-3">
-                  <Button
-                    type="button"
-                    variant={bookingType === 'company' ? 'default' : 'outline'}
-                    onClick={() => {
-                      setBookingType('company');
-                      setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
-                    }}
-                    className="flex-1"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Company
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={bookingType === 'individual' ? 'default' : 'outline'}
-                    onClick={() => {
-                      setBookingType('individual');
-                      setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
-                    }}
-                    className="flex-1"
-                  >
-                    <User className="h-4 w-4 mr-2" />
-                    Individual
-                  </Button>
-                </div>
+          <TabsContent value="existing" className="space-y-4 mt-4">
+            <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
+              <Label className="mb-2 block">Booking Type</Label>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant={bookingType === 'company' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setBookingType('company');
+                    setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
+                  }}
+                  className="flex-1"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Company
+                </Button>
+                <Button
+                  type="button"
+                  variant={bookingType === 'individual' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setBookingType('individual');
+                    setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
+                  }}
+                  className="flex-1"
+                >
+                  <User className="h-4 w-4 mr-2" />
+                  Individual
+                </Button>
               </div>
+            </div>
 
-              {bookingType === 'company' ? (
-                <>
-                  <div className="space-y-2">
-                    <Label>Company (optional)</Label>
-                    <Combobox
-                      options={[
-                        { value: 'all', label: 'All Contacts' },
-                        ...companies.map(company => ({
-                          value: company.id,
-                          label: company.name,
-                        }))
-                      ]}
-                      value={bookingData.company_id}
-                      onValueChange={(value) => setBookingData({ ...bookingData, company_id: value, contact_id: '' })}
-                      placeholder="Filter by company or view all..."
-                      searchPlaceholder="Type to search companies..."
-                      emptyMessage="No companies found."
-                    />
-                    <p className="text-xs text-slate-600">
-                      Optional: Filter contacts by company
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Contact *</Label>
-                    <Combobox
-                      options={(bookingData.company_id && bookingData.company_id !== 'all' ? filteredContacts : contacts).map(contact => ({
-                        value: contact.id,
-                        label: `${contact.first_name} ${contact.last_name}`,
-                        secondary: contact.email || undefined,
-                        tertiary: contact.phone || contact.companies?.name || undefined,
-                      }))}
-                      value={bookingData.contact_id}
-                      onValueChange={(value) => setBookingData({ ...bookingData, contact_id: value })}
-                      placeholder="Search and select contact..."
-                      searchPlaceholder="Type to search contacts..."
-                      emptyMessage="No contacts found."
-                    />
-                  </div>
-                </>
-              ) : (
+            {bookingType === 'company' ? (
+              <>
                 <div className="space-y-2">
-                  <Label>Candidate *</Label>
+                  <Label>Company (optional)</Label>
                   <Combobox
-                    options={candidates.map(candidate => ({
-                      value: candidate.id,
-                      label: `${candidate.first_name} ${candidate.last_name}`,
-                      secondary: candidate.email || undefined,
-                      tertiary: candidate.phone || undefined,
-                    }))}
-                    value={bookingData.candidate_id}
-                    onValueChange={(value) => setBookingData({ ...bookingData, candidate_id: value })}
-                    placeholder="Search and select candidate..."
-                    searchPlaceholder="Type to search candidates..."
-                    emptyMessage="No candidates found."
+                    options={[
+                      { value: 'all', label: 'All Contacts' },
+                      ...companies.map(company => ({
+                        value: company.id,
+                        label: company.name,
+                      }))
+                    ]}
+                    value={bookingData.company_id}
+                    onValueChange={(value) => setBookingData({ ...bookingData, company_id: value, contact_id: '' })}
+                    placeholder="Filter by company or view all..."
+                    searchPlaceholder="Type to search companies..."
+                    emptyMessage="No companies found."
                   />
                   <p className="text-xs text-slate-600">
-                    Select from existing candidates in the system
+                    Optional: Filter contacts by company
                   </p>
                 </div>
-              )}
-            </TabsContent>
 
-            <TabsContent value="new" className="space-y-4 mt-4">
-              {duplicateWarnings.length > 0 && (
-                <Alert className="border-amber-200 bg-amber-50">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-sm">
-                    <div className="font-medium text-amber-900 mb-2">
-                      Potential duplicate clients found ({duplicateWarnings.length})
-                    </div>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {duplicateWarnings.map((duplicate) => (
-                        <div
-                          key={`${duplicate.type}-${duplicate.id}`}
-                          className="flex items-center justify-between p-2 bg-white rounded border text-slate-900"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-sm">
-                              {duplicate.first_name} {duplicate.last_name}
-                              <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
-                                {duplicate.type === 'contact' ? 'Contact' : 'Candidate'}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-600">
-                              {duplicate.email && `${duplicate.email}`}
-                              {duplicate.phone && ` • ${duplicate.phone}`}
-                              {duplicate.companies?.name && ` • ${duplicate.companies.name}`}
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => useExistingClient(duplicate)}
-                          >
-                            Use This
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="individual"
-                    checked={isIndividual}
-                    onChange={(e) => {
-                      setIsIndividual(e.target.checked);
-                      if (e.target.checked) {
-                        setNewContactData({ ...newContactData, company_id: '' });
-                        setNewCompanyData({ name: '', address: '', city: '', postcode: '' });
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-slate-300"
+                <div className="space-y-2">
+                  <Label>Contact *</Label>
+                  <Combobox
+                    options={(bookingData.company_id && bookingData.company_id !== 'all' ? filteredContacts : contacts).map(contact => ({
+                      value: contact.id,
+                      label: `${contact.first_name} ${contact.last_name}`,
+                      secondary: contact.email || undefined,
+                      tertiary: contact.phone || contact.companies?.name || undefined,
+                    }))}
+                    value={bookingData.contact_id}
+                    onValueChange={(value) => setBookingData({ ...bookingData, contact_id: value })}
+                    placeholder="Search and select contact..."
+                    searchPlaceholder="Type to search contacts..."
+                    emptyMessage="No contacts found."
                   />
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-slate-600" />
-                    <label htmlFor="individual" className="text-sm font-medium cursor-pointer">
-                      Individual Client (Paying for themselves)
-                    </label>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <Label>Candidate *</Label>
+                <Combobox
+                  options={candidates.map(candidate => ({
+                    value: candidate.id,
+                    label: `${candidate.first_name} ${candidate.last_name}`,
+                    secondary: candidate.email || undefined,
+                    tertiary: candidate.phone || undefined,
+                  }))}
+                  value={bookingData.candidate_id}
+                  onValueChange={(value) => setBookingData({ ...bookingData, candidate_id: value })}
+                  placeholder="Search and select candidate..."
+                  searchPlaceholder="Type to search candidates..."
+                  emptyMessage="No candidates found."
+                />
+                <p className="text-xs text-slate-600">
+                  Select from existing candidates in the system
+                </p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="new" className="space-y-4 mt-4">
+            {duplicateWarnings.length > 0 && (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-sm">
+                  <div className="font-medium text-amber-900 mb-2">
+                    Potential duplicate clients found ({duplicateWarnings.length})
                   </div>
-                </div>
-                {isIndividual && (
-                  <p className="text-xs text-slate-600 mt-2 ml-7">
-                    No company will be associated with this booking
-                  </p>
-                )}
-              </div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {duplicateWarnings.map((duplicate) => (
+                      <div
+                        key={`${duplicate.type}-${duplicate.id}`}
+                        className="flex items-center justify-between p-2 bg-white rounded border text-slate-900"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">
+                            {duplicate.first_name} {duplicate.last_name}
+                            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                              {duplicate.type === 'contact' ? 'Contact' : 'Candidate'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            {duplicate.email && `${duplicate.email}`}
+                            {duplicate.phone && ` - ${duplicate.phone}`}
+                            {duplicate.companies?.name && ` - ${duplicate.companies.name}`}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => useExistingClient(duplicate)}
+                        >
+                          Use This
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name *</Label>
-                  <Input
-                    id="first_name"
-                    value={newContactData.first_name}
-                    onChange={(e) => setNewContactData({ ...newContactData, first_name: e.target.value })}
-                    required={clientType === 'new'}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name *</Label>
-                  <Input
-                    id="last_name"
-                    value={newContactData.last_name}
-                    onChange={(e) => setNewContactData({ ...newContactData, last_name: e.target.value })}
-                    required={clientType === 'new'}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newContactData.email}
-                    onChange={(e) => setNewContactData({ ...newContactData, email: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={newContactData.phone}
-                    onChange={(e) => setNewContactData({ ...newContactData, phone: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language</Label>
-                  <Select
-                    value={newContactData.language}
-                    onValueChange={(value) => setNewContactData({ ...newContactData, language: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="EN">English</SelectItem>
-                      <SelectItem value="DE">German</SelectItem>
-                      <SelectItem value="FR">French</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="mb-4 p-3 bg-slate-50 rounded-lg border">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="individual"
+                  checked={isIndividual}
+                  onChange={(e) => {
+                    setIsIndividual(e.target.checked);
+                    if (e.target.checked) {
+                      setNewContactData({ ...newContactData, company_id: '' });
+                      setNewCompanyData({ name: '', address: '', city: '', postcode: '' });
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-slate-600" />
+                  <label htmlFor="individual" className="text-sm font-medium cursor-pointer">
+                    Individual Client (Paying for themselves)
+                  </label>
                 </div>
               </div>
+              {isIndividual && (
+                <p className="text-xs text-slate-600 mt-2 ml-7">
+                  No company will be associated with this booking
+                </p>
+              )}
+            </div>
 
-              {!isIndividual && (
-                <div className="border-t pt-4 space-y-4">
-                  <h4 className="font-medium text-sm">Company Information</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="first_name">First Name *</Label>
+                <Input
+                  id="first_name"
+                  value={newContactData.first_name}
+                  onChange={(e) => setNewContactData({ ...newContactData, first_name: e.target.value })}
+                  required={clientType === 'new'}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="last_name">Last Name *</Label>
+                <Input
+                  id="last_name"
+                  value={newContactData.last_name}
+                  onChange={(e) => setNewContactData({ ...newContactData, last_name: e.target.value })}
+                  required={clientType === 'new'}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={newContactData.email}
+                  onChange={(e) => setNewContactData({ ...newContactData, email: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={newContactData.phone}
+                  onChange={(e) => setNewContactData({ ...newContactData, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="language">Language</Label>
+                <Select
+                  value={newContactData.language}
+                  onValueChange={(value) => setNewContactData({ ...newContactData, language: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EN">English</SelectItem>
+                    <SelectItem value="DE">German</SelectItem>
+                    <SelectItem value="FR">French</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {!isIndividual && (
+              <div className="border-t pt-4 space-y-4">
+                <h4 className="font-medium text-sm">Company Information</h4>
 
                 <div className="space-y-2">
                   <Label>Use Existing Company</Label>
@@ -1103,10 +1185,52 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                     </div>
                   </>
                 )}
-                </div>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </>
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>New Booking</DialogTitle>
+          <DialogDescription>Create a new course booking</DialogDescription>
+        </DialogHeader>
+
+        {prefillData && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-amber-700 font-semibold mb-2">
+              <Calendar className="h-4 w-4" />
+              Booking Details
+            </div>
+            <div className="space-y-1">
+              {prefillData.courseName ? (
+                <div className="font-semibold text-amber-900">Course: {prefillData.courseName}</div>
+              ) : (
+                <div className="font-semibold text-amber-900">Course: Not specified - select below</div>
               )}
-            </TabsContent>
-          </Tabs>
+              {prefillData.courseDates && (
+                <div className="text-sm text-amber-800">Dates: {prefillData.courseDates}</div>
+              )}
+              {prefillData.contactName && (
+                <div className="text-sm text-amber-800">Delegate: {prefillData.contactName}</div>
+              )}
+              {prefillData.companyName && (
+                <div className="text-sm text-amber-800">Company: {prefillData.companyName}</div>
+              )}
+              {prefillData.invoiceNumber && (
+                <div className="text-sm text-amber-800">Invoice: {prefillData.invoiceNumber}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {renderClientSection()}
 
           <div className="border-t pt-4 space-y-4">
             <h4 className="font-medium">Booking Details</h4>
