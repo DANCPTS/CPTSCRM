@@ -11,7 +11,7 @@ import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { UserPlus, Users, User, TriangleAlert as AlertTriangle, Search, Copy, ExternalLink } from 'lucide-react';
+import { UserPlus, Users, User, TriangleAlert as AlertTriangle, Search, Copy, ExternalLink, Calendar } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 interface BookingDialogProps {
@@ -725,21 +725,31 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
           <DialogDescription>Create a new course booking</DialogDescription>
         </DialogHeader>
 
-        {prefillData && (prefillData.courseName || prefillData.contactName || prefillData.companyName) && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-sm text-blue-600 font-medium mb-1">Creating booking for:</div>
-            {prefillData.courseName && (
-              <div className="font-semibold text-blue-900">{prefillData.courseName}</div>
-            )}
-            {prefillData.courseDates && (
-              <div className="text-sm text-blue-700">{prefillData.courseDates}</div>
-            )}
-            {prefillData.contactName && (
-              <div className="text-sm text-blue-700 mt-1">Delegate: {prefillData.contactName}</div>
-            )}
-            {prefillData.companyName && (
-              <div className="text-sm text-blue-700">Company: {prefillData.companyName}</div>
-            )}
+        {prefillData && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-amber-700 font-semibold mb-2">
+              <Calendar className="h-4 w-4" />
+              Booking Details
+            </div>
+            <div className="space-y-1">
+              {prefillData.courseName ? (
+                <div className="font-semibold text-amber-900">Course: {prefillData.courseName}</div>
+              ) : (
+                <div className="font-semibold text-amber-900">Course: Not specified - select below</div>
+              )}
+              {prefillData.courseDates && (
+                <div className="text-sm text-amber-800">Dates: {prefillData.courseDates}</div>
+              )}
+              {prefillData.contactName && (
+                <div className="text-sm text-amber-800">Delegate: {prefillData.contactName}</div>
+              )}
+              {prefillData.companyName && (
+                <div className="text-sm text-amber-800">Company: {prefillData.companyName}</div>
+              )}
+              {prefillData.invoiceNumber && (
+                <div className="text-sm text-amber-800">Invoice: {prefillData.invoiceNumber}</div>
+              )}
+            </div>
           </div>
         )}
 
