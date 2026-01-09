@@ -162,9 +162,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: bookingForm } = await supabase
       .from('booking_forms')
-      .select('id')
+      .select('id, form_data')
       .eq('lead_id', leadId)
       .maybeSingle();
+
+    const poNumber = bookingForm?.form_data?.po_number || '';
 
     let delegateCourseMap: Map<string, string[]> = new Map();
     if (bookingForm) {
@@ -221,21 +223,22 @@ Deno.serve(async (req: Request) => {
     const coursesHtml = bookings.map(booking => {
       const courseRun = booking.course_run;
       const course = courseRun?.course;
-      const candidate = booking.candidate;
       const startTime = formatStartTime(booking.start_time);
 
-      let candidateName = 'TBC';
-      if (candidate) {
-        candidateName = `${candidate.first_name} ${candidate.last_name}`;
-      } else if (course?.title) {
+      let delegateNames = 'TBC';
+      if (course?.title) {
         const normalizedTitle = course.title.toLowerCase().trim();
         const delegatesForCourse = delegateCourseMap.get(normalizedTitle);
         if (delegatesForCourse && delegatesForCourse.length > 0) {
-          candidateName = delegatesForCourse.join(', ');
+          delegateNames = delegatesForCourse.join(', ');
         }
       }
 
-      const delegateCount = candidateName !== 'TBC' ? candidateName.split(', ').length : 0;
+      if (delegateNames === 'TBC' && booking.candidate) {
+        delegateNames = `${booking.candidate.first_name} ${booking.candidate.last_name}`;
+      }
+
+      const delegateCount = delegateNames !== 'TBC' ? delegateNames.split(', ').length : 0;
 
       return `
         <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0f3d5e;">
@@ -255,11 +258,11 @@ Deno.serve(async (req: Request) => {
             </tr>
             <tr>
               <td>Delegate Name${delegateCount > 1 ? 's' : ''}:</td>
-              <td>${candidateName}</td>
+              <td>${delegateNames}</td>
             </tr>
             <tr>
               <td>Purchase Order Number:</td>
-              <td>${booking.invoice_number || firstBooking.invoice_number || 'TBC'}</td>
+              <td>${poNumber || 'TBC'}</td>
             </tr>
           </table>
         </div>
