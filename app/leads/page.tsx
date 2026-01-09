@@ -409,6 +409,7 @@ export default function LeadsPage() {
 
   const handleSendJoiningInstructions = async (lead: any, e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
 
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-joining-instructions`;
@@ -437,7 +438,7 @@ export default function LeadsPage() {
 
       if (error) throw error;
 
-      toast.success('Joining instructions sent successfully!');
+      toast.success(result.message || 'Joining instructions sent successfully!');
       loadLeadBookings();
     } catch (error: any) {
       console.error('Failed to send joining instructions:', error);

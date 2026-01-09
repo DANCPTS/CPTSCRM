@@ -82,7 +82,7 @@ function formatDateRange(startDate: string, endDate: string): string {
   const month = end.toLocaleDateString('en-GB', { month: 'short' });
   const year = end.getFullYear();
 
-  return `${startDay} – ${endDay} ${month} ${year}`;
+  return `${startDay} \u2013 ${endDay} ${month} ${year}`;
 }
 
 function formatStartTime(timeString: string | null): string {
