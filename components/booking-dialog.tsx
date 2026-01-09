@@ -11,7 +11,7 @@ import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { UserPlus, Users, User, AlertTriangle, Search, Copy, ExternalLink } from 'lucide-react';
+import { UserPlus, Users, User, TriangleAlert as AlertTriangle, Search, Copy, ExternalLink } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 interface BookingDialogProps {
