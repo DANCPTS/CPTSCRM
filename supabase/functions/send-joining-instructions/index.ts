@@ -166,13 +166,39 @@ Deno.serve(async (req: Request) => {
       .eq('lead_id', leadId)
       .maybeSingle();
 
-    let delegates: any[] = [];
+    let delegateCourseMap: Map<string, string[]> = new Map();
     if (bookingForm) {
-      const { data: delegateData } = await supabase
-        .from('booking_form_delegates')
-        .select('*')
+      const { data: bfCourses } = await supabase
+        .from('booking_form_courses')
+        .select('id, course_name')
         .eq('booking_form_id', bookingForm.id);
-      delegates = delegateData || [];
+
+      const { data: delegates } = await supabase
+        .from('booking_form_delegates')
+        .select('id, name')
+        .eq('booking_form_id', bookingForm.id);
+
+      const { data: delegateCourses } = await supabase
+        .from('booking_form_delegate_courses')
+        .select('delegate_id, course_id')
+        .eq('booking_form_id', bookingForm.id);
+
+      if (bfCourses && delegates && delegateCourses) {
+        const courseIdToName = new Map(bfCourses.map(c => [c.id, c.course_name]));
+        const delegateIdToName = new Map(delegates.map(d => [d.id, d.name]));
+
+        for (const dc of delegateCourses) {
+          const courseName = courseIdToName.get(dc.course_id);
+          const delegateName = delegateIdToName.get(dc.delegate_id);
+          if (courseName && delegateName) {
+            const normalizedName = courseName.toLowerCase().trim();
+            if (!delegateCourseMap.has(normalizedName)) {
+              delegateCourseMap.set(normalizedName, []);
+            }
+            delegateCourseMap.get(normalizedName)!.push(delegateName);
+          }
+        }
+      }
     }
 
     const firstBooking = bookings[0];
@@ -192,10 +218,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const delegateNames = delegates.length > 0
-      ? delegates.map(d => d.name).join(', ')
-      : null;
-
     const coursesHtml = bookings.map(booking => {
       const courseRun = booking.course_run;
       const course = courseRun?.course;
@@ -205,9 +227,15 @@ Deno.serve(async (req: Request) => {
       let candidateName = 'TBC';
       if (candidate) {
         candidateName = `${candidate.first_name} ${candidate.last_name}`;
-      } else if (delegateNames) {
-        candidateName = delegateNames;
+      } else if (course?.title) {
+        const normalizedTitle = course.title.toLowerCase().trim();
+        const delegatesForCourse = delegateCourseMap.get(normalizedTitle);
+        if (delegatesForCourse && delegatesForCourse.length > 0) {
+          candidateName = delegatesForCourse.join(', ');
+        }
       }
+
+      const delegateCount = candidateName !== 'TBC' ? candidateName.split(', ').length : 0;
 
       return `
         <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0f3d5e;">
@@ -226,7 +254,7 @@ Deno.serve(async (req: Request) => {
               <td>${courseRun?.location || 'Construction & Plant Training Services, Podington, NN29 7XA'}</td>
             </tr>
             <tr>
-              <td>Delegate Name${delegates.length > 1 ? 's' : ''}:</td>
+              <td>Delegate Name${delegateCount > 1 ? 's' : ''}:</td>
               <td>${candidateName}</td>
             </tr>
             <tr>
