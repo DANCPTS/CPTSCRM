@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users } from 'lucide-react';
+import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2 } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
@@ -16,6 +16,7 @@ import { CelebrationAnimation } from '@/components/celebration-animation';
 import { InvoiceDialog } from '@/components/invoice-dialog';
 import { useAuth } from '@/lib/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmailPreviewDialog } from '@/components/email-preview-dialog';
 
 const statuses = [
   { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800' },
@@ -46,6 +47,17 @@ export default function LeadsPage() {
   const [selectedLeadForInvoice, setSelectedLeadForInvoice] = useState<any>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailPreviewData, setEmailPreviewData] = useState<{
+    recipientEmail: string;
+    subject: string;
+    htmlContent: string;
+    emailType: 'booking-form' | 'joining-instructions';
+    leadId: string;
+  } | null>(null);
+  const [emailPreviewLoading, setEmailPreviewLoading] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
 
   const kanbanRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -407,9 +419,9 @@ export default function LeadsPage() {
     setInvoiceDialogOpen(true);
   };
 
-  const handleSendJoiningInstructions = async (lead: any, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const handleSendJoiningInstructions = async (lead: any, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
 
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-joining-instructions`;
@@ -444,6 +456,201 @@ export default function LeadsPage() {
       console.error('Failed to send joining instructions:', error);
       toast.error(error.message || 'Failed to send joining instructions');
     }
+  };
+
+  const handlePreviewBookingFormEmail = async (lead: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEmailPreviewLoading(true);
+
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/preview-booking-form-email`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          leadId: lead.id,
+          leadName: lead.name,
+          leadEmail: lead.email,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to generate preview');
+      }
+
+      setEmailPreviewData({
+        recipientEmail: result.recipientEmail,
+        subject: result.subject,
+        htmlContent: result.htmlContent,
+        emailType: 'booking-form',
+        leadId: lead.id,
+      });
+      setEmailPreviewOpen(true);
+    } catch (error: any) {
+      console.error('Failed to preview email:', error);
+      toast.error(error.message || 'Failed to generate email preview');
+    } finally {
+      setEmailPreviewLoading(false);
+    }
+  };
+
+  const handlePreviewJoiningInstructionsEmail = async (lead: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEmailPreviewLoading(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/preview-joining-instructions-email`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ leadId: lead.id }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to generate preview');
+      }
+
+      setEmailPreviewData({
+        recipientEmail: result.recipientEmail,
+        subject: result.subject,
+        htmlContent: result.htmlContent,
+        emailType: 'joining-instructions',
+        leadId: lead.id,
+      });
+      setEmailPreviewOpen(true);
+    } catch (error: any) {
+      console.error('Failed to preview email:', error);
+      toast.error(error.message || 'Failed to generate email preview');
+    } finally {
+      setEmailPreviewLoading(false);
+    }
+  };
+
+  const handleEmailPreviewEdit = () => {
+    setEmailPreviewOpen(false);
+    if (!emailPreviewData) return;
+
+    const lead = leads.find(l => l.id === emailPreviewData.leadId);
+    if (!lead) return;
+
+    if (emailPreviewData.emailType === 'booking-form') {
+      setSelectedLead(lead);
+      setDialogOpen(true);
+    } else {
+      const form = bookingForms[lead.id];
+      if (form) {
+        window.location.href = `/bookings/${form.id}`;
+      }
+    }
+  };
+
+  const handleEmailPreviewSend = async () => {
+    if (!emailPreviewData) return;
+
+    setEmailSending(true);
+    const lead = leads.find(l => l.id === emailPreviewData.leadId);
+
+    try {
+      if (emailPreviewData.emailType === 'booking-form') {
+        if (!lead) throw new Error('Lead not found');
+        await sendBookingFormDirectly(lead);
+      } else {
+        if (!lead) throw new Error('Lead not found');
+        await handleSendJoiningInstructions(lead);
+      }
+      setEmailPreviewOpen(false);
+      setEmailPreviewData(null);
+    } catch (error: any) {
+      console.error('Failed to send email:', error);
+      toast.error(error.message || 'Failed to send email');
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const sendBookingFormDirectly = async (lead: any) => {
+    const token = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    const { data: proposalCourses } = await supabase
+      .from('proposal_courses')
+      .select('*')
+      .eq('lead_id', lead.id)
+      .order('display_order');
+
+    const totalDelegates = proposalCourses?.reduce((sum, course) => sum + (course.number_of_delegates || 0), 0) || 0;
+    const totalAmount = proposalCourses?.reduce((sum, course) => sum + (course.price || 0), 0) || 0;
+
+    const { data, error } = await supabase
+      .from('booking_forms')
+      .insert({
+        lead_id: lead.id,
+        token,
+        status: 'pending',
+        expires_at: expiresAt.toISOString(),
+        total_delegates: totalDelegates,
+        total_amount: totalAmount,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (proposalCourses && proposalCourses.length > 0) {
+      const coursesToInsert = proposalCourses.map((course, index) => ({
+        booking_form_id: data.id,
+        course_name: course.course_name,
+        course_dates: course.dates,
+        course_venue: course.venue,
+        number_of_delegates: course.number_of_delegates,
+        price: course.price,
+        currency: course.currency,
+        display_order: index,
+        vat_exempt: course.vat_exempt || false,
+      }));
+
+      await supabase.from('booking_form_courses').insert(coursesToInsert);
+    }
+
+    const formUrl = `${window.location.origin}/booking-form/${token}`;
+
+    const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-booking-form`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        leadId: lead.id,
+        leadName: lead.name,
+        leadEmail: lead.email,
+        formUrl,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Failed to send email');
+    }
+
+    await navigator.clipboard.writeText(formUrl);
+    toast.success(`Email sent to ${lead.email} and link copied to clipboard!`);
+    await loadBookingForms();
   };
 
   const updateLeadStatus = async (leadId: string, newStatus: string) => {
@@ -794,14 +1001,29 @@ export default function LeadsPage() {
                                     </Button>
                                   </div>
                                 ) : (
-                                  <Button
-                                    size="sm"
-                                    className="w-full text-xs"
-                                    onClick={(e) => sendBookingForm(lead, e)}
-                                  >
-                                    <Send className="mr-1 h-3 w-3" />
-                                    Send Booking Form
-                                  </Button>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-shrink-0 text-xs px-2"
+                                      onClick={(e) => handlePreviewBookingFormEmail(lead, e)}
+                                      disabled={emailPreviewLoading}
+                                    >
+                                      {emailPreviewLoading ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Eye className="h-3 w-3" />
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="flex-1 text-xs"
+                                      onClick={(e) => sendBookingForm(lead, e)}
+                                    >
+                                      <Send className="mr-1 h-3 w-3" />
+                                      Send Booking Form
+                                    </Button>
+                                  </div>
                                 )
                               )}
                               {status.value === 'won' && (() => {
@@ -841,15 +1063,30 @@ export default function LeadsPage() {
                                         <FileText className="mr-1 h-3 w-3" />
                                         Update Invoice
                                       </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="w-full text-xs"
-                                        onClick={(e) => handleSendJoiningInstructions(lead, e)}
-                                      >
-                                        <SendHorizontal className="mr-1 h-3 w-3" />
-                                        Resend Joining Instructions
-                                      </Button>
+                                      <div className="flex gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="flex-shrink-0 text-xs px-2"
+                                          onClick={(e) => handlePreviewJoiningInstructionsEmail(lead, e)}
+                                          disabled={emailPreviewLoading}
+                                        >
+                                          {emailPreviewLoading ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Eye className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="flex-1 text-xs"
+                                          onClick={(e) => handleSendJoiningInstructions(lead, e)}
+                                        >
+                                          <SendHorizontal className="mr-1 h-3 w-3" />
+                                          Resend Joining Instructions
+                                        </Button>
+                                      </div>
                                     </div>
                                   );
                                 }
@@ -861,15 +1098,30 @@ export default function LeadsPage() {
                                       <div className="text-xs text-slate-600 mb-1">
                                         Invoice: {hasBooking.invoice_no}
                                       </div>
-                                      <Button
-                                        size="sm"
-                                        variant="default"
-                                        className="w-full text-xs"
-                                        onClick={(e) => handleSendJoiningInstructions(lead, e)}
-                                      >
-                                        <SendHorizontal className="mr-1 h-3 w-3" />
-                                        Send Joining Instructions
-                                      </Button>
+                                      <div className="flex gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="flex-shrink-0 text-xs px-2"
+                                          onClick={(e) => handlePreviewJoiningInstructionsEmail(lead, e)}
+                                          disabled={emailPreviewLoading}
+                                        >
+                                          {emailPreviewLoading ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Eye className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="default"
+                                          className="flex-1 text-xs"
+                                          onClick={(e) => handleSendJoiningInstructions(lead, e)}
+                                        >
+                                          <SendHorizontal className="mr-1 h-3 w-3" />
+                                          Send Joining Instructions
+                                        </Button>
+                                      </div>
                                     </div>
                                   );
                                 }
@@ -1037,6 +1289,23 @@ export default function LeadsPage() {
         show={showCelebration}
         onComplete={() => setShowCelebration(false)}
       />
+
+      {emailPreviewData && (
+        <EmailPreviewDialog
+          open={emailPreviewOpen}
+          onClose={() => {
+            setEmailPreviewOpen(false);
+            setEmailPreviewData(null);
+          }}
+          recipientEmail={emailPreviewData.recipientEmail}
+          subject={emailPreviewData.subject}
+          htmlContent={emailPreviewData.htmlContent}
+          emailType={emailPreviewData.emailType}
+          onEdit={handleEmailPreviewEdit}
+          onSend={handleEmailPreviewSend}
+          isSending={emailSending}
+        />
+      )}
     </AppShell>
   );
 }
