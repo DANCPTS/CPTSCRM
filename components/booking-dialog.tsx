@@ -30,6 +30,7 @@ interface BookingDialogProps {
     invoiceNumber?: string;
     invoiceSent?: boolean;
     candidateId?: string;
+    bookingReference?: string;
   };
 }
 
@@ -64,6 +65,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     vat_exempt: false,
     payment_link: '',
     start_time: '08:00',
+    booking_reference: '',
   });
 
   const startTimeOptions = [
@@ -128,6 +130,10 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
 
     if (prefillData.invoiceNumber) {
       setBookingData(prev => ({ ...prev, invoice_no: prefillData.invoiceNumber || '' }));
+    }
+
+    if (prefillData.bookingReference) {
+      setBookingData(prev => ({ ...prev, booking_reference: prefillData.bookingReference || '' }));
     }
 
     if (prefillData.candidateId) {
@@ -721,6 +727,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
             lead_id: prefillData?.leadId || null,
             invoice_sent: prefillData?.invoiceSent || false,
             start_time: bookingData.start_time || '08:00',
+            booking_reference: bookingData.booking_reference || null,
           },
         ]);
 
@@ -753,6 +760,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
       vat_exempt: false,
       payment_link: '',
       start_time: '08:00',
+      booking_reference: '',
     });
     setNewContactData({
       first_name: '',
@@ -1501,6 +1509,17 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                   </div>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label htmlFor="booking_reference">Booking Reference</Label>
+                <Input
+                  id="booking_reference"
+                  value={bookingData.booking_reference}
+                  onChange={(e) => setBookingData({ ...bookingData, booking_reference: e.target.value })}
+                  placeholder="e.g., ABC-001, PO12345"
+                />
+                <p className="text-xs text-slate-500">Your reference number for this booking</p>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

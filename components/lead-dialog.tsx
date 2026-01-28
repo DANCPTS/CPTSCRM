@@ -80,6 +80,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
     quoted_venue: '',
     number_of_delegates: '',
     quote_notes: '',
+    booking_reference: '',
   });
 
   useEffect(() => {
@@ -113,6 +114,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         quoted_venue: lead.quoted_venue || '',
         number_of_delegates: lead.number_of_delegates || '',
         quote_notes: lead.quote_notes || '',
+        booking_reference: lead.booking_reference || '',
       });
       setPreviousStatus(lead.status || 'new');
       loadProposalCourses(lead.id);
@@ -138,6 +140,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         quoted_venue: '',
         number_of_delegates: '',
         quote_notes: '',
+        booking_reference: '',
       });
       setPreviousStatus('new');
       setProposalCourses([]);
@@ -597,6 +600,19 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
             <TabsContent value="proposal" className="space-y-4 mt-0">
               {(formData.status === 'proposal' || formData.status === 'won') ? (
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="booking_reference">Booking Reference</Label>
+                    <Input
+                      id="booking_reference"
+                      value={formData.booking_reference}
+                      onChange={(e) => setFormData({ ...formData, booking_reference: e.target.value })}
+                      placeholder="e.g., ABC-001, PO12345"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This reference will be carried through to the booking form and final booking
+                    </p>
+                  </div>
+
                   <div className="flex justify-between items-center">
                     <h3 className="font-semibold text-sm">Courses in Proposal</h3>
                     <Button

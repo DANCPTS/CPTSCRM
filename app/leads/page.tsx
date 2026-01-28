@@ -311,6 +311,7 @@ export default function LeadsPage() {
           expires_at: expiresAt.toISOString(),
           total_delegates: totalDelegates,
           total_amount: totalAmount,
+          booking_reference: lead.booking_reference || null,
         })
         .select()
         .single();
@@ -709,6 +710,7 @@ export default function LeadsPage() {
         expires_at: expiresAt.toISOString(),
         total_delegates: totalDelegates,
         total_amount: totalAmount,
+        booking_reference: lead.booking_reference || null,
       })
       .select()
       .single();

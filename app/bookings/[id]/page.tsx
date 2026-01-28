@@ -293,7 +293,15 @@ export default function BookingFormDetailPage() {
         doc.setTextColor(146, 64, 14);
         doc.text(`STATUS: ${bookingForm.status.toUpperCase()}`, pageWidth / 2, y, { align: 'center' });
       }
-      y += 15;
+      y += 8;
+
+      if (bookingForm.booking_reference) {
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Booking Reference: ${bookingForm.booking_reference}`, pageWidth / 2, y, { align: 'center' });
+        y += 8;
+      }
+      y += 2;
 
       drawSectionHeader('Contact Information');
 
@@ -645,6 +653,12 @@ export default function BookingFormDetailPage() {
                 <CheckCircle className="mr-1 h-3 w-3" />
                 {bookingForm.status === 'signed' ? 'Signed' : bookingForm.status}
               </Badge>
+              {bookingForm.booking_reference && (
+                <Badge variant="outline" className="text-sm px-3 py-1">
+                  <FileText className="mr-1 h-3 w-3" />
+                  Ref: {bookingForm.booking_reference}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -1330,6 +1344,7 @@ export default function BookingFormDetailPage() {
             courseDates: selectedCourse?.course_dates || formData.course_dates || lead?.quoted_dates,
             numberOfDelegates: selectedCourse?.number_of_delegates || formData.number_of_delegates || lead?.number_of_delegates,
             invoiceNumber: bookingForm.invoice_number,
+            bookingReference: bookingForm.booking_reference || lead?.booking_reference,
           };
         })()}
       />
