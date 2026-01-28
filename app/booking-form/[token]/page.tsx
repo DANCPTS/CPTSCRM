@@ -77,14 +77,23 @@ export default function BookingFormPage() {
   const [bookingForm, setBookingForm] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
 
   useEffect(() => {
-    loadBookingForm();
+    checkAuthAndLoad();
   }, [token]);
 
-  const loadBookingForm = async () => {
+  const checkAuthAndLoad = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setIsAuthenticated(!!session);
+    setIsPreviewMode(!!session);
+    loadBookingForm(!!session);
+  };
+
+  const loadBookingForm = async (isAdmin: boolean = false) => {
     try {
-      console.log('Loading booking form with token:', token);
+      console.log('Loading booking form with token:', token, 'isAdmin:', isAdmin);
 
       const { data, error } = await supabase
         .from('booking_forms')
@@ -107,14 +116,16 @@ export default function BookingFormPage() {
 
       console.log('Booking form data:', data);
 
-      if (data.status === 'signed') {
-        toast.info('This form has already been submitted');
-        return;
-      }
+      if (!isAdmin) {
+        if (data.status === 'signed') {
+          toast.info('This form has already been submitted');
+          return;
+        }
 
-      if (new Date(data.expires_at) < new Date()) {
-        toast.error('This booking form has expired');
-        return;
+        if (new Date(data.expires_at) < new Date()) {
+          toast.error('This booking form has expired');
+          return;
+        }
       }
 
       setBookingForm(data);
@@ -539,7 +550,9 @@ export default function BookingFormPage() {
     );
   }
 
-  if (!bookingForm || bookingForm.status === 'signed' || new Date(bookingForm.expires_at) < new Date()) {
+  const isFormExpiredOrSigned = bookingForm && (bookingForm.status === 'signed' || new Date(bookingForm.expires_at) < new Date());
+
+  if (!bookingForm || (!isPreviewMode && isFormExpiredOrSigned)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white p-4">
         <Card className="w-full max-w-md shadow-xl">
@@ -570,7 +583,12 @@ export default function BookingFormPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-[#0f3d5e] rounded-t-2xl p-8 text-white text-center shadow-lg">
+        {isPreviewMode && isFormExpiredOrSigned && (
+          <div className="bg-amber-500 text-white p-4 rounded-t-2xl text-center font-semibold">
+            ADMIN PREVIEW MODE - This form is {bookingForm.status === 'signed' ? 'already signed' : 'expired'} and not accessible to customers
+          </div>
+        )}
+        <div className={`bg-[#0f3d5e] ${isPreviewMode && isFormExpiredOrSigned ? 'rounded-none' : 'rounded-t-2xl'} p-8 text-white text-center shadow-lg`}>
           <img
             src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png"
             alt="CPTS Training"
