@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2 } from 'lucide-react';
+import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2, ExternalLink } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
@@ -392,6 +392,16 @@ export default function LeadsPage() {
     const form = bookingForms[lead.id];
     if (form) {
       window.location.href = `/bookings/${form.id}`;
+    }
+  };
+
+  const previewBookingFormAsCustomer = (lead: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const form = bookingForms[lead.id];
+    if (form?.token) {
+      window.open(`/booking-form/${form.token}`, '_blank');
+    } else {
+      toast.error('No booking form found for this lead');
     }
   };
 
@@ -1010,15 +1020,26 @@ export default function LeadsPage() {
                                         {bookingForms[lead.id].status}
                                       </Badge>
                                     </div>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="w-full text-xs"
-                                      onClick={(e) => viewBookingForm(lead, e)}
-                                    >
-                                      <Eye className="mr-1 h-3 w-3" />
-                                      View Form
-                                    </Button>
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="flex-1 text-xs"
+                                        onClick={(e) => viewBookingForm(lead, e)}
+                                      >
+                                        <Eye className="mr-1 h-3 w-3" />
+                                        View
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="flex-1 text-xs"
+                                        onClick={(e) => previewBookingFormAsCustomer(lead, e)}
+                                      >
+                                        <ExternalLink className="mr-1 h-3 w-3" />
+                                        Preview
+                                      </Button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <div className="flex gap-1">
