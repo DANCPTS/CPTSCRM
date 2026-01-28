@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2, ExternalLink } from 'lucide-react';
+import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2, ExternalLink, ChevronDown } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
@@ -17,6 +17,7 @@ import { InvoiceDialog } from '@/components/invoice-dialog';
 import { useAuth } from '@/lib/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmailPreviewDialog } from '@/components/email-preview-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 const statuses = [
   { value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800' },
@@ -381,6 +382,69 @@ export default function LeadsPage() {
       }
 
       await loadBookingForms();
+    } catch (error: any) {
+      toast.error('Failed to create booking form');
+      console.error(error);
+    }
+  };
+
+  const createAndPreviewBookingForm = async (lead: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      const token = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const { data: proposalCourses } = await supabase
+        .from('proposal_courses')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .order('display_order');
+
+      const totalDelegates = proposalCourses?.reduce((sum, course) => sum + (course.number_of_delegates || 0), 0) || 0;
+      const totalAmount = proposalCourses?.reduce((sum, course) => sum + (course.price || 0), 0) || 0;
+
+      const { data, error } = await supabase
+        .from('booking_forms')
+        .insert({
+          lead_id: lead.id,
+          token,
+          status: 'pending',
+          expires_at: expiresAt.toISOString(),
+          total_delegates: totalDelegates,
+          total_amount: totalAmount,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (proposalCourses && proposalCourses.length > 0) {
+        const coursesToInsert = proposalCourses.map((course, index) => ({
+          booking_form_id: data.id,
+          course_name: course.course_name,
+          course_dates: course.dates,
+          course_venue: course.venue,
+          number_of_delegates: course.number_of_delegates,
+          price: course.price,
+          currency: course.currency,
+          display_order: index,
+          vat_exempt: course.vat_exempt || false,
+        }));
+
+        const { error: coursesError } = await supabase
+          .from('booking_form_courses')
+          .insert(coursesToInsert);
+
+        if (coursesError) {
+          console.error('Error creating booking form courses:', coursesError);
+        }
+      }
+
+      await loadBookingForms();
+      toast.success('Booking form created - opening preview...');
+      window.open(`/booking-form/${token}`, '_blank');
     } catch (error: any) {
       toast.error('Failed to create booking form');
       console.error(error);
@@ -1056,14 +1120,25 @@ export default function LeadsPage() {
                                         <Eye className="h-3 w-3" />
                                       )}
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      className="flex-1 text-xs"
-                                      onClick={(e) => sendBookingForm(lead, e)}
-                                    >
-                                      <Send className="mr-1 h-3 w-3" />
-                                      Send Booking Form
-                                    </Button>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button size="sm" className="flex-1 text-xs">
+                                          <Send className="mr-1 h-3 w-3" />
+                                          Booking Form
+                                          <ChevronDown className="ml-1 h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={(e) => createAndPreviewBookingForm(lead, e as any)}>
+                                          <ExternalLink className="mr-2 h-4 w-4" />
+                                          Create & Preview
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={(e) => sendBookingForm(lead, e as any)}>
+                                          <Send className="mr-2 h-4 w-4" />
+                                          Send to Customer
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   </div>
                                 )
                               )}
