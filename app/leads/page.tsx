@@ -474,6 +474,7 @@ export default function LeadsPage() {
           leadId: lead.id,
           leadName: lead.name,
           leadEmail: lead.email,
+          baseUrl: window.location.origin,
         }),
       });
 

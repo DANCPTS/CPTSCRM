@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { leadId, leadName, leadEmail, formUrl } = await req.json();
+    const { leadId, leadName, leadEmail, formUrl, baseUrl } = await req.json();
 
     if (!leadId || !leadName || !leadEmail) {
       return new Response(
@@ -211,7 +211,21 @@ Deno.serve(async (req: Request) => {
       `;
     }
 
-    const previewFormUrl = formUrl || `${Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.vercel.app')}/booking-form/[token]`;
+    let previewFormUrl = formUrl;
+    if (!previewFormUrl && bookingForm) {
+      const { data: formWithToken } = await supabase
+        .from('booking_forms')
+        .select('token')
+        .eq('id', bookingForm.id)
+        .maybeSingle();
+
+      if (formWithToken?.token && baseUrl) {
+        previewFormUrl = `${baseUrl}/booking-form/${formWithToken.token}`;
+      }
+    }
+    if (!previewFormUrl) {
+      previewFormUrl = baseUrl ? `${baseUrl}/booking-form/[token]` : '#';
+    }
     const emailHtml = generateBookingFormEmailHtml(leadName, previewFormUrl, quoteDetailsHtml);
     const subject = 'Your Training Booking Form - CPTS Training';
 
