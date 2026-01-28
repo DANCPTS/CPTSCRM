@@ -16,7 +16,7 @@ import { CelebrationAnimation } from '@/components/celebration-animation';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import html2pdf from 'html2pdf.js';
+import { jsPDF } from 'jspdf';
 
 export default function BookingFormDetailPage() {
   const params = useParams();
@@ -239,166 +239,287 @@ export default function BookingFormDetailPage() {
       const lead = bookingForm.leads;
       const delegatesToDisplay = delegates.length > 0 ? delegates : formData.delegates;
 
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 750px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPTS Training" style="height: 60px; margin-bottom: 10px;" />
-            <h1 style="color: #0f3d5e; margin: 10px 0 5px 0; font-size: 24px;">Booking Form</h1>
-            <span style="display: inline-block; padding: 6px 16px; border-radius: 4px; font-size: 14px; font-weight: bold; ${bookingForm.status === 'signed' ? 'background: #dcfce7; color: #166534;' : 'background: #fef3c7; color: #92400e;'}">
-              ${bookingForm.status === 'signed' ? 'SIGNED' : bookingForm.status.toUpperCase()}
-            </span>
-          </div>
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+      let y = 20;
 
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Contact Information</h2>
-            ${formData.customer_type === 'business' && formData.company_name ? `
-            <div style="margin-bottom: 10px;">
-              <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Company Name</div>
-              <div style="color: #1e293b; font-size: 14px;">${formData.company_name}</div>
-            </div>
-            ` : ''}
-            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
-              <div style="flex: 1; min-width: 200px;">
-                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Contact Name</div>
-                <div style="color: #1e293b; font-size: 14px;">${formData.contact_name || lead?.name || 'N/A'}</div>
-              </div>
-              <div style="flex: 1; min-width: 200px;">
-                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Email</div>
-                <div style="color: #1e293b; font-size: 14px;">${formData.contact_email || lead?.email || 'N/A'}</div>
-              </div>
-              <div style="flex: 1; min-width: 200px;">
-                <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Phone</div>
-                <div style="color: #1e293b; font-size: 14px;">${formData.contact_phone || lead?.phone || 'N/A'}</div>
-              </div>
-            </div>
-            ${formData.address ? `
-            <div style="margin-top: 10px;">
-              <div style="font-weight: bold; color: #64748b; font-size: 12px; margin-bottom: 2px;">Address</div>
-              <div style="color: #1e293b; font-size: 14px;">${formData.address}${formData.city ? ', ' + formData.city : ''}${formData.postcode ? ' ' + formData.postcode : ''}</div>
-            </div>
-            ` : ''}
-          </div>
-
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Course Details</h2>
-            ${bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0 ?
-              bookingForm.booking_form_courses.map((course: any, index: number) => `
-                <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #F28D00; margin-bottom: 15px;">
-                  ${bookingForm.booking_form_courses.length > 1 ? `<div style="font-weight: bold; color: #0f3d5e; margin-bottom: 10px;">Course ${index + 1}</div>` : ''}
-                  <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">${course.course_name}</div>
-                  <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
-                    ${course.course_dates ? `<div><span style="color: #64748b;">Dates:</span> <span style="color: #1e293b;">${course.course_dates}</span></div>` : ''}
-                    ${course.course_venue ? `<div><span style="color: #64748b;">Venue:</span> <span style="color: #1e293b;">${course.course_venue}</span></div>` : ''}
-                    <div><span style="color: #64748b;">Delegates:</span> <span style="color: #1e293b;">${course.number_of_delegates || 'N/A'}</span></div>
-                    ${course.price ? `<div><span style="color: #64748b;">Price:</span> <span style="color: #F28D00; font-weight: bold;">${course.currency || 'GBP'} ${Number(course.price).toFixed(2)}${!course.vat_exempt ? ' + VAT' : ''}</span></div>` : ''}
-                  </div>
-                </div>
-              `).join('') : `
-              <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #F28D00;">
-                <div style="font-size: 16px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">${formData.course_name || lead?.quoted_course || 'N/A'}</div>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
-                  <div><span style="color: #64748b;">Dates:</span> <span style="color: #1e293b;">${formData.course_dates || lead?.quoted_dates || 'N/A'}</span></div>
-                  <div><span style="color: #64748b;">Venue:</span> <span style="color: #1e293b;">${formData.course_venue || lead?.quoted_venue || 'N/A'}</span></div>
-                  <div><span style="color: #64748b;">Delegates:</span> <span style="color: #1e293b;">${formData.number_of_delegates || lead?.number_of_delegates || 'N/A'}</span></div>
-                </div>
-              </div>
-            `}
-            ${formData.po_number ? `
-            <div style="margin-top: 15px;">
-              <span style="font-weight: bold; color: #64748b; font-size: 12px;">PO Number:</span>
-              <span style="color: #1e293b; font-size: 14px; margin-left: 8px;">${formData.po_number}</span>
-            </div>
-            ` : ''}
-          </div>
-
-          ${delegatesToDisplay && delegatesToDisplay.length > 0 ? `
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Delegate Details</h2>
-            ${delegatesToDisplay.map((delegate: any, index: number) => `
-              <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 15px;">
-                <div style="font-weight: bold; color: #0f3d5e; font-size: 15px; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-                  ${delegate.name || `Delegate ${index + 1}`}
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; font-size: 13px;">
-                  ${delegate.email ? `<div style="min-width: 180px;"><span style="color: #64748b;">Email:</span> <span style="color: #1e293b;">${delegate.email}</span></div>` : ''}
-                  ${delegate.phone ? `<div style="min-width: 150px;"><span style="color: #64748b;">Phone:</span> <span style="color: #1e293b;">${delegate.phone}</span></div>` : ''}
-                  ${delegate.date_of_birth ? `<div style="min-width: 130px;"><span style="color: #64748b;">DOB:</span> <span style="color: #1e293b;">${delegate.date_of_birth}</span></div>` : ''}
-                  ${delegate.national_insurance ? `<div style="min-width: 150px;"><span style="color: #64748b;">NI Number:</span> <span style="color: #1e293b;">${delegate.national_insurance}</span></div>` : ''}
-                </div>
-                ${delegate.address ? `
-                <div style="margin-top: 10px; font-size: 13px;">
-                  <span style="color: #64748b;">Address:</span> <span style="color: #1e293b;">${delegate.address}${delegate.city ? ', ' + delegate.city : ''}${delegate.postcode ? ' ' + delegate.postcode : ''}</span>
-                </div>
-                ` : ''}
-                ${delegate.id && delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0 ? `
-                <div style="margin-top: 12px; padding: 10px; background: #dbeafe; border: 1px solid #93c5fd; border-radius: 6px;">
-                  <div style="font-weight: bold; color: #1e40af; font-size: 12px; margin-bottom: 5px;">Enrolled Courses:</div>
-                  <div style="color: #1e40af; font-size: 13px;">${delegateCourseMap[delegate.id].join(', ')}</div>
-                </div>
-                ` : ''}
-              </div>
-            `).join('')}
-          </div>
-          ` : ''}
-
-          ${formData.special_requirements ? `
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Special Requirements</h2>
-            <div style="background: #fef3c7; padding: 12px; border-radius: 6px; font-size: 14px; color: #92400e;">
-              ${formData.special_requirements}
-            </div>
-          </div>
-          ` : ''}
-
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Terms Agreement</h2>
-            <div style="background: #dcfce7; padding: 15px; border-radius: 8px; border: 2px solid #86efac;">
-              <div style="color: #166534; font-size: 14px; font-weight: bold;">
-                The customer has read and agreed to the terms and conditions. They confirmed that the information provided is accurate and understand that this is a legally binding agreement.
-              </div>
-            </div>
-          </div>
-
-          ${bookingForm.signature_data ? `
-          <div style="margin-bottom: 25px;">
-            <h2 style="color: #0f3d5e; border-bottom: 2px solid #F28D00; padding-bottom: 8px; font-size: 18px; margin-bottom: 15px;">Signature</h2>
-            <div style="background: #fff; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px;">
-              <img src="${bookingForm.signature_data}" alt="Signature" style="max-width: 300px; height: auto;" />
-              ${bookingForm.signed_at ? `<div style="margin-top: 10px; color: #64748b; font-size: 12px;">Signed on ${format(new Date(bookingForm.signed_at), 'PPpp')}</div>` : ''}
-            </div>
-          </div>
-          ` : ''}
-
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #64748b;">
-              <div><strong>Sent:</strong> ${bookingForm.sent_at ? format(new Date(bookingForm.sent_at), 'PP') : 'N/A'}</div>
-              <div><strong>Signed:</strong> ${bookingForm.signed_at ? format(new Date(bookingForm.signed_at), 'PP') : 'Not signed'}</div>
-              <div><strong>Generated:</strong> ${format(new Date(), 'PP')}</div>
-            </div>
-            <div style="text-align: center; margin-top: 15px; color: #94a3b8; font-size: 11px;">
-              This is a digitally signed booking form from CPTS Training
-            </div>
-          </div>
-        </div>
-      `;
-
-      const container = document.createElement('div');
-      container.innerHTML = htmlContent;
-      document.body.appendChild(container);
-
-      const fileName = `booking-form-${formData.contact_name || lead?.name || 'unknown'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
-
-      const opt: any = {
-        margin: [10, 10, 10, 10],
-        filename: fileName,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      const addNewPageIfNeeded = (neededSpace: number) => {
+        if (y + neededSpace > 280) {
+          doc.addPage();
+          y = 20;
+        }
       };
 
-      await (html2pdf() as any).set(opt).from(container).save();
+      const drawSectionHeader = (title: string) => {
+        addNewPageIfNeeded(15);
+        doc.setFontSize(14);
+        doc.setTextColor(15, 61, 94);
+        doc.setFont('helvetica', 'bold');
+        doc.text(title, margin, y);
+        y += 2;
+        doc.setDrawColor(242, 141, 0);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, margin + 60, y);
+        y += 8;
+      };
 
-      document.body.removeChild(container);
+      const drawLabelValue = (label: string, value: string, x: number = margin) => {
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, x, y);
+        y += 4;
+        doc.setFontSize(10);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'normal');
+        const lines = doc.splitTextToSize(value || 'N/A', contentWidth - (x - margin));
+        doc.text(lines, x, y);
+        y += (lines.length * 4) + 4;
+      };
+
+      doc.setFontSize(20);
+      doc.setTextColor(15, 61, 94);
+      doc.setFont('helvetica', 'bold');
+      doc.text('CPTS Training - Booking Form', pageWidth / 2, y, { align: 'center' });
+      y += 10;
+
+      doc.setFontSize(11);
+      if (bookingForm.status === 'signed') {
+        doc.setTextColor(22, 101, 52);
+        doc.text('STATUS: SIGNED', pageWidth / 2, y, { align: 'center' });
+      } else {
+        doc.setTextColor(146, 64, 14);
+        doc.text(`STATUS: ${bookingForm.status.toUpperCase()}`, pageWidth / 2, y, { align: 'center' });
+      }
+      y += 15;
+
+      drawSectionHeader('Contact Information');
+
+      if (formData.customer_type === 'business' && formData.company_name) {
+        drawLabelValue('Company Name', formData.company_name);
+      }
+      drawLabelValue('Contact Name', formData.contact_name || lead?.name || 'N/A');
+      drawLabelValue('Email', formData.contact_email || lead?.email || 'N/A');
+      drawLabelValue('Phone', formData.contact_phone || lead?.phone || 'N/A');
+      if (formData.address) {
+        const fullAddress = `${formData.address}${formData.city ? ', ' + formData.city : ''}${formData.postcode ? ' ' + formData.postcode : ''}`;
+        drawLabelValue('Address', fullAddress);
+      }
+      y += 5;
+
+      drawSectionHeader('Course Details');
+
+      const courses = bookingForm.booking_form_courses && bookingForm.booking_form_courses.length > 0
+        ? bookingForm.booking_form_courses
+        : [{
+            course_name: formData.course_name || lead?.quoted_course || 'N/A',
+            course_dates: formData.course_dates || lead?.quoted_dates,
+            course_venue: formData.course_venue || lead?.quoted_venue,
+            number_of_delegates: formData.number_of_delegates || lead?.number_of_delegates,
+            price: null,
+            currency: 'GBP',
+            vat_exempt: false
+          }];
+
+      courses.forEach((course: any, index: number) => {
+        addNewPageIfNeeded(30);
+
+        if (courses.length > 1) {
+          doc.setFontSize(11);
+          doc.setTextColor(15, 61, 94);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Course ${index + 1}`, margin, y);
+          y += 6;
+        }
+
+        doc.setFontSize(12);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        const courseLines = doc.splitTextToSize(course.course_name || 'N/A', contentWidth);
+        doc.text(courseLines, margin, y);
+        y += (courseLines.length * 5) + 3;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+
+        if (course.course_dates) {
+          doc.setTextColor(100, 116, 139);
+          doc.text('Dates: ', margin, y);
+          doc.setTextColor(30, 41, 59);
+          doc.text(course.course_dates, margin + 15, y);
+          y += 5;
+        }
+        if (course.course_venue) {
+          doc.setTextColor(100, 116, 139);
+          doc.text('Venue: ', margin, y);
+          doc.setTextColor(30, 41, 59);
+          doc.text(course.course_venue, margin + 15, y);
+          y += 5;
+        }
+        doc.setTextColor(100, 116, 139);
+        doc.text('Delegates: ', margin, y);
+        doc.setTextColor(30, 41, 59);
+        doc.text(String(course.number_of_delegates || 'N/A'), margin + 22, y);
+        y += 5;
+
+        if (course.price) {
+          doc.setTextColor(100, 116, 139);
+          doc.text('Price: ', margin, y);
+          doc.setTextColor(242, 141, 0);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${course.currency || 'GBP'} ${Number(course.price).toFixed(2)}${!course.vat_exempt ? ' + VAT' : ''}`, margin + 13, y);
+          doc.setFont('helvetica', 'normal');
+          y += 5;
+        }
+        y += 5;
+      });
+
+      if (formData.po_number) {
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'bold');
+        doc.text('PO Number: ', margin, y);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'normal');
+        doc.text(formData.po_number, margin + 25, y);
+        y += 10;
+      }
+
+      if (delegatesToDisplay && delegatesToDisplay.length > 0) {
+        drawSectionHeader('Delegate Details');
+
+        delegatesToDisplay.forEach((delegate: any, index: number) => {
+          addNewPageIfNeeded(35);
+
+          doc.setFontSize(11);
+          doc.setTextColor(15, 61, 94);
+          doc.setFont('helvetica', 'bold');
+          doc.text(delegate.name || `Delegate ${index + 1}`, margin, y);
+          y += 6;
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+
+          if (delegate.email) {
+            doc.setTextColor(100, 116, 139);
+            doc.text('Email: ', margin, y);
+            doc.setTextColor(30, 41, 59);
+            doc.text(delegate.email, margin + 14, y);
+            y += 5;
+          }
+          if (delegate.phone) {
+            doc.setTextColor(100, 116, 139);
+            doc.text('Phone: ', margin, y);
+            doc.setTextColor(30, 41, 59);
+            doc.text(delegate.phone, margin + 14, y);
+            y += 5;
+          }
+          if (delegate.date_of_birth) {
+            doc.setTextColor(100, 116, 139);
+            doc.text('DOB: ', margin, y);
+            doc.setTextColor(30, 41, 59);
+            doc.text(delegate.date_of_birth, margin + 11, y);
+            y += 5;
+          }
+          if (delegate.national_insurance) {
+            doc.setTextColor(100, 116, 139);
+            doc.text('NI Number: ', margin, y);
+            doc.setTextColor(30, 41, 59);
+            doc.text(delegate.national_insurance, margin + 22, y);
+            y += 5;
+          }
+          if (delegate.address) {
+            const delegateAddress = `${delegate.address}${delegate.city ? ', ' + delegate.city : ''}${delegate.postcode ? ' ' + delegate.postcode : ''}`;
+            doc.setTextColor(100, 116, 139);
+            doc.text('Address: ', margin, y);
+            doc.setTextColor(30, 41, 59);
+            const addrLines = doc.splitTextToSize(delegateAddress, contentWidth - 20);
+            doc.text(addrLines, margin + 17, y);
+            y += (addrLines.length * 4) + 2;
+          }
+
+          if (delegate.id && delegateCourseMap[delegate.id] && delegateCourseMap[delegate.id].length > 0) {
+            y += 2;
+            doc.setFillColor(219, 234, 254);
+            doc.roundedRect(margin, y - 3, contentWidth, 12, 2, 2, 'F');
+            doc.setFontSize(9);
+            doc.setTextColor(30, 64, 175);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Enrolled Courses:', margin + 3, y + 2);
+            doc.setFont('helvetica', 'normal');
+            doc.text(delegateCourseMap[delegate.id].join(', '), margin + 35, y + 2);
+            y += 15;
+          }
+          y += 5;
+        });
+      }
+
+      if (formData.special_requirements) {
+        drawSectionHeader('Special Requirements');
+        doc.setFontSize(10);
+        doc.setTextColor(146, 64, 14);
+        const reqLines = doc.splitTextToSize(formData.special_requirements, contentWidth);
+        doc.text(reqLines, margin, y);
+        y += (reqLines.length * 4) + 10;
+      }
+
+      drawSectionHeader('Terms Agreement');
+      addNewPageIfNeeded(20);
+      doc.setFillColor(220, 252, 231);
+      doc.roundedRect(margin, y - 3, contentWidth, 15, 2, 2, 'F');
+      doc.setFontSize(10);
+      doc.setTextColor(22, 101, 52);
+      doc.setFont('helvetica', 'bold');
+      const termsText = 'The customer has read and agreed to the terms and conditions. They confirmed that the information provided is accurate and understand that this is a legally binding agreement.';
+      const termsLines = doc.splitTextToSize(termsText, contentWidth - 6);
+      doc.text(termsLines, margin + 3, y + 2);
+      y += 20;
+
+      if (bookingForm.signature_data) {
+        drawSectionHeader('Signature');
+        addNewPageIfNeeded(50);
+
+        try {
+          doc.addImage(bookingForm.signature_data, 'PNG', margin, y, 60, 25);
+          y += 30;
+        } catch (e) {
+          doc.setFontSize(10);
+          doc.setTextColor(100, 116, 139);
+          doc.text('[Signature on file]', margin, y);
+          y += 10;
+        }
+
+        if (bookingForm.signed_at) {
+          doc.setFontSize(9);
+          doc.setTextColor(100, 116, 139);
+          doc.text(`Signed on ${format(new Date(bookingForm.signed_at), 'PPpp')}`, margin, y);
+          y += 10;
+        }
+      }
+
+      addNewPageIfNeeded(25);
+      y += 5;
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 8;
+
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Sent: ${bookingForm.sent_at ? format(new Date(bookingForm.sent_at), 'PP') : 'N/A'}`, margin, y);
+      doc.text(`Signed: ${bookingForm.signed_at ? format(new Date(bookingForm.signed_at), 'PP') : 'Not signed'}`, pageWidth / 2, y, { align: 'center' });
+      doc.text(`Generated: ${format(new Date(), 'PP')}`, pageWidth - margin, y, { align: 'right' });
+      y += 8;
+
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text('This is a digitally signed booking form from CPTS Training', pageWidth / 2, y, { align: 'center' });
+
+      const fileName = `booking-form-${formData.contact_name || lead?.name || 'unknown'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      doc.save(fileName);
+
       toast.success('PDF downloaded successfully');
     } catch (error) {
       console.error('Failed to generate PDF:', error);
