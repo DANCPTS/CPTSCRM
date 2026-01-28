@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Mail, Send, Pencil, X, Loader2, Eye, RotateCcw } from 'lucide-react';
 
 interface EmailPreviewDialogProps {
@@ -30,21 +29,76 @@ export function EmailPreviewDialog({
   emailType,
 }: EmailPreviewDialogProps) {
   const [isEditing, setIsEditing] = useState(false);
-  const [editedHtml, setEditedHtml] = useState(htmlContent);
   const [editedSubject, setEditedSubject] = useState(subject);
+  const [hasContentChanges, setHasContentChanges] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const originalHtmlRef = useRef(htmlContent);
 
   useEffect(() => {
-    setEditedHtml(htmlContent);
     setEditedSubject(subject);
     setIsEditing(false);
+    setHasContentChanges(false);
+    originalHtmlRef.current = htmlContent;
   }, [htmlContent, subject, open]);
 
-  const handleReset = () => {
-    setEditedHtml(htmlContent);
-    setEditedSubject(subject);
+  useEffect(() => {
+    if (iframeRef.current && isEditing) {
+      const iframe = iframeRef.current;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        doc.body.contentEditable = 'true';
+        doc.body.style.cursor = 'text';
+        doc.body.style.outline = 'none';
+
+        const handleInput = () => {
+          setHasContentChanges(true);
+        };
+        doc.body.addEventListener('input', handleInput);
+
+        return () => {
+          doc.body.removeEventListener('input', handleInput);
+        };
+      }
+    } else if (iframeRef.current && !isEditing) {
+      const iframe = iframeRef.current;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        doc.body.contentEditable = 'false';
+        doc.body.style.cursor = 'default';
+      }
+    }
+  }, [isEditing]);
+
+  const getEditedHtml = () => {
+    if (iframeRef.current) {
+      const iframe = iframeRef.current;
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        return `<!DOCTYPE html><html><head>${doc.head.innerHTML}</head><body>${doc.body.innerHTML}</body></html>`;
+      }
+    }
+    return htmlContent;
   };
 
-  const hasChanges = editedHtml !== htmlContent || editedSubject !== subject;
+  const handleReset = () => {
+    setEditedSubject(subject);
+    setHasContentChanges(false);
+    if (iframeRef.current) {
+      iframeRef.current.srcdoc = originalHtmlRef.current;
+    }
+  };
+
+  const handleSend = () => {
+    const finalHtml = getEditedHtml();
+    onSend(finalHtml, editedSubject);
+  };
+
+  const hasChanges = hasContentChanges || editedSubject !== subject;
+
+  const editableHtml = htmlContent.replace(
+    '<body>',
+    '<body style="outline: none;">'
+  );
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
@@ -86,25 +140,20 @@ export function EmailPreviewDialog({
           </div>
         </div>
 
-        {isEditing ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <Textarea
-              value={editedHtml}
-              onChange={(e) => setEditedHtml(e.target.value)}
-              className="w-full h-full min-h-[400px] font-mono text-xs resize-none"
-              placeholder="Edit HTML content..."
-            />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-hidden rounded-lg border bg-white">
-            <iframe
-              srcDoc={editedHtml}
-              className="w-full h-full min-h-[400px]"
-              title="Email Preview"
-              sandbox="allow-same-origin"
-            />
-          </div>
-        )}
+        <div className={`flex-1 min-h-0 overflow-hidden rounded-lg border bg-white ${isEditing ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}>
+          {isEditing && (
+            <div className="bg-blue-50 border-b border-blue-200 px-3 py-2 text-sm text-blue-700">
+              Click on any text below to edit it directly
+            </div>
+          )}
+          <iframe
+            ref={iframeRef}
+            srcDoc={editableHtml}
+            className="w-full h-full min-h-[400px]"
+            title="Email Preview"
+            sandbox="allow-same-origin"
+          />
+        </div>
 
         <DialogFooter className="flex-shrink-0 flex gap-2 sm:justify-between">
           <div className="flex gap-2">
@@ -128,16 +177,16 @@ export function EmailPreviewDialog({
               {isEditing ? (
                 <>
                   <Eye className="mr-2 h-4 w-4" />
-                  Preview
+                  Done Editing
                 </>
               ) : (
                 <>
                   <Pencil className="mr-2 h-4 w-4" />
-                  Edit HTML
+                  Edit
                 </>
               )}
             </Button>
-            <Button onClick={() => onSend(editedHtml, editedSubject)} disabled={isSending}>
+            <Button onClick={handleSend} disabled={isSending}>
               {isSending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
