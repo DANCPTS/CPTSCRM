@@ -151,7 +151,7 @@ export function EmailPreviewDialog({
             srcDoc={editableHtml}
             className="w-full h-full min-h-[400px]"
             title="Email Preview"
-            sandbox="allow-same-origin"
+            sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           />
         </div>
 
