@@ -223,7 +223,7 @@ export default function LeadsPage() {
     try {
       const { data, error } = await supabase
         .from('booking_forms')
-        .select('*, booking_form_courses(id)')
+        .select('*, booking_form_courses(id), email_sent')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -364,6 +364,10 @@ export default function LeadsPage() {
 
         if (response.ok && result.success) {
           emailSent = true;
+          await supabase
+            .from('booking_forms')
+            .update({ email_sent: true })
+            .eq('id', data.id);
         } else {
           console.error('Failed to send email:', result.error || result.message);
           toast.error('Failed to send email: ' + (result.error || 'Unknown error'));
@@ -466,6 +470,51 @@ export default function LeadsPage() {
       window.open(`/booking-form/${form.token}`, '_blank');
     } else {
       toast.error('No booking form found for this lead');
+    }
+  };
+
+  const sendExistingBookingFormEmail = async (lead: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const form = bookingForms[lead.id];
+    if (!form?.token) {
+      toast.error('No booking form found');
+      return;
+    }
+
+    try {
+      const formUrl = `${window.location.origin}/booking-form/${form.token}`;
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-booking-form`;
+      const headers = {
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          leadId: lead.id,
+          leadName: lead.name,
+          leadEmail: lead.email,
+          formUrl,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        await supabase
+          .from('booking_forms')
+          .update({ email_sent: true })
+          .eq('id', form.id);
+        toast.success(`Email sent to ${lead.email}!`);
+        await loadBookingForms();
+      } else {
+        toast.error('Failed to send email: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Failed to send email:', error);
+      toast.error('Failed to send email');
     }
   };
 
@@ -1084,6 +1133,19 @@ export default function LeadsPage() {
                                         {bookingForms[lead.id].status}
                                       </Badge>
                                     </div>
+                                    {!bookingForms[lead.id].email_sent && bookingForms[lead.id].status === 'pending' && (
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className="text-amber-600">Email not sent yet</span>
+                                        <Button
+                                          size="sm"
+                                          className="text-xs h-6"
+                                          onClick={(e) => sendExistingBookingFormEmail(lead, e)}
+                                        >
+                                          <Send className="mr-1 h-3 w-3" />
+                                          Send Email
+                                        </Button>
+                                      </div>
+                                    )}
                                     <div className="flex gap-1">
                                       <Button
                                         size="sm"
