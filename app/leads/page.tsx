@@ -538,25 +538,7 @@ export default function LeadsPage() {
     }
   };
 
-  const handleEmailPreviewEdit = () => {
-    setEmailPreviewOpen(false);
-    if (!emailPreviewData) return;
-
-    const lead = leads.find(l => l.id === emailPreviewData.leadId);
-    if (!lead) return;
-
-    if (emailPreviewData.emailType === 'booking-form') {
-      setSelectedLead(lead);
-      setDialogOpen(true);
-    } else {
-      const form = bookingForms[lead.id];
-      if (form) {
-        window.location.href = `/bookings/${form.id}`;
-      }
-    }
-  };
-
-  const handleEmailPreviewSend = async () => {
+  const handleEmailPreviewSend = async (modifiedHtml: string, modifiedSubject: string) => {
     if (!emailPreviewData) return;
 
     setEmailSending(true);
@@ -565,10 +547,10 @@ export default function LeadsPage() {
     try {
       if (emailPreviewData.emailType === 'booking-form') {
         if (!lead) throw new Error('Lead not found');
-        await sendBookingFormDirectly(lead);
+        await sendBookingFormDirectly(lead, modifiedHtml, modifiedSubject);
       } else {
         if (!lead) throw new Error('Lead not found');
-        await handleSendJoiningInstructions(lead);
+        await sendJoiningInstructionsWithContent(lead, modifiedHtml, modifiedSubject);
       }
       setEmailPreviewOpen(false);
       setEmailPreviewData(null);
@@ -580,7 +562,7 @@ export default function LeadsPage() {
     }
   };
 
-  const sendBookingFormDirectly = async (lead: any) => {
+  const sendBookingFormDirectly = async (lead: any, customHtml?: string, customSubject?: string) => {
     const token = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -626,6 +608,7 @@ export default function LeadsPage() {
     }
 
     const formUrl = `${window.location.origin}/booking-form/${token}`;
+    const finalHtml = customHtml ? customHtml.replace('[token]', token) : undefined;
 
     const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-booking-form`;
     const response = await fetch(apiUrl, {
@@ -639,6 +622,8 @@ export default function LeadsPage() {
         leadName: lead.name,
         leadEmail: lead.email,
         formUrl,
+        customHtml: finalHtml,
+        customSubject,
       }),
     });
 
@@ -651,6 +636,40 @@ export default function LeadsPage() {
     await navigator.clipboard.writeText(formUrl);
     toast.success(`Email sent to ${lead.email} and link copied to clipboard!`);
     await loadBookingForms();
+  };
+
+  const sendJoiningInstructionsWithContent = async (lead: any, customHtml: string, customSubject: string) => {
+    const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-joining-instructions`;
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        leadId: lead.id,
+        customHtml,
+        customSubject,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to send joining instructions');
+    }
+
+    const { error } = await supabase
+      .from('bookings')
+      .update({ joining_instructions_sent: true })
+      .eq('lead_id', lead.id);
+
+    if (error) throw error;
+
+    toast.success(result.message || 'Joining instructions sent successfully!');
+    loadLeadBookings();
   };
 
   const updateLeadStatus = async (leadId: string, newStatus: string) => {
@@ -1301,7 +1320,6 @@ export default function LeadsPage() {
           subject={emailPreviewData.subject}
           htmlContent={emailPreviewData.htmlContent}
           emailType={emailPreviewData.emailType}
-          onEdit={handleEmailPreviewEdit}
           onSend={handleEmailPreviewSend}
           isSending={emailSending}
         />

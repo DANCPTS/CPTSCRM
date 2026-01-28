@@ -84,7 +84,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { leadId, leadName, leadEmail, formUrl } = await req.json();
+    const { leadId, leadName, leadEmail, formUrl, customHtml, customSubject } = await req.json();
 
     if (!leadId || !leadName || !leadEmail || !formUrl) {
       return new Response(
@@ -262,10 +262,13 @@ Deno.serve(async (req: Request) => {
       </html>
     `;
 
+    const finalSubject = customSubject || 'Your Training Booking Form - CPTS Training';
+    const finalHtml = customHtml || emailHtml;
+
     await sendEmail(
       leadEmail,
-      'Your Training Booking Form - CPTS Training',
-      emailHtml
+      finalSubject,
+      finalHtml
     );
 
     return new Response(

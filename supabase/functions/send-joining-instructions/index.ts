@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { leadId } = await req.json();
+    const { leadId, customHtml, customSubject } = await req.json();
 
     if (!leadId) {
       return new Response(
@@ -373,14 +373,17 @@ Deno.serve(async (req: Request) => {
       </html>
     `;
 
-    const emailSubject = bookings.length > 1
+    const defaultSubject = bookings.length > 1
       ? `Joining Instructions - ${bookings.length} Training Courses`
       : `Joining Instructions - ${firstBooking.course_run?.course?.title || 'Training Course'}`;
 
+    const finalSubject = customSubject || defaultSubject;
+    const finalHtml = customHtml || emailHtml;
+
     await sendEmail(
       recipientEmail,
-      emailSubject,
-      emailHtml
+      finalSubject,
+      finalHtml
     );
 
     return new Response(
