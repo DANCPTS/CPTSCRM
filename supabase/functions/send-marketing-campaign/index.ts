@@ -134,12 +134,12 @@ Deno.serve(async (req: Request) => {
     const { data: emailSettingsData, error: settingsError } = await supabase
       .from("email_settings")
       .select("*")
-      .limit(1)
+      .eq("settings_type", "marketing")
       .maybeSingle();
 
     if (settingsError || !emailSettingsData) {
       return new Response(
-        JSON.stringify({ success: false, error: "Email settings not configured. Please configure SMTP settings in Settings." }),
+        JSON.stringify({ success: false, error: "Marketing email settings not configured. Please configure Marketing Email Settings in Settings." }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

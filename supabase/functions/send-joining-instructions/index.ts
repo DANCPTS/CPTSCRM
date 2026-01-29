@@ -135,7 +135,7 @@ Deno.serve(async (req: Request) => {
     const { data: emailSettingsData, error: settingsError } = await supabase
       .from('email_settings')
       .select('*')
-      .limit(1)
+      .eq('settings_type', 'transactional')
       .maybeSingle();
 
     if (settingsError || !emailSettingsData) {

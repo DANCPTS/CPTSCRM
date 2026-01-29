@@ -88,7 +88,15 @@ export default function SettingsPage() {
   const [processing, setProcessing] = useState(false);
   const [calendarColors, setCalendarColors] = useState<Record<string, string>>({});
   const [loadingColors, setLoadingColors] = useState(true);
-  const [emailSettings, setEmailSettings] = useState({
+  const [transactionalSettings, setTransactionalSettings] = useState({
+    smtp_host: '',
+    smtp_port: 465,
+    smtp_username: '',
+    smtp_password: '',
+    from_email: '',
+    from_name: '',
+  });
+  const [marketingSettings, setMarketingSettings] = useState({
     smtp_host: '',
     smtp_port: 465,
     smtp_username: '',
@@ -97,10 +105,10 @@ export default function SettingsPage() {
     from_name: '',
   });
   const [loadingEmailSettings, setLoadingEmailSettings] = useState(true);
-  const [savingEmailSettings, setSavingEmailSettings] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [testingEmail, setTestingEmail] = useState(false);
-  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [savingTransactional, setSavingTransactional] = useState(false);
+  const [savingMarketing, setSavingMarketing] = useState(false);
+  const [showTransactionalPassword, setShowTransactionalPassword] = useState(false);
+  const [showMarketingPassword, setShowMarketingPassword] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -201,21 +209,35 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase
         .from('email_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
+        .select('*');
 
       if (error) throw error;
 
       if (data) {
-        setEmailSettings({
-          smtp_host: data.smtp_host || '',
-          smtp_port: data.smtp_port || 465,
-          smtp_username: data.smtp_username || '',
-          smtp_password: data.smtp_password || '',
-          from_email: data.from_email || '',
-          from_name: data.from_name || '',
-        });
+        const transactional = data.find(s => s.settings_type === 'transactional');
+        const marketing = data.find(s => s.settings_type === 'marketing');
+
+        if (transactional) {
+          setTransactionalSettings({
+            smtp_host: transactional.smtp_host || '',
+            smtp_port: transactional.smtp_port || 465,
+            smtp_username: transactional.smtp_username || '',
+            smtp_password: transactional.smtp_password || '',
+            from_email: transactional.from_email || '',
+            from_name: transactional.from_name || '',
+          });
+        }
+
+        if (marketing) {
+          setMarketingSettings({
+            smtp_host: marketing.smtp_host || '',
+            smtp_port: marketing.smtp_port || 465,
+            smtp_username: marketing.smtp_username || '',
+            smtp_password: marketing.smtp_password || '',
+            from_email: marketing.from_email || '',
+            from_name: marketing.from_name || '',
+          });
+        }
       }
     } catch (error: any) {
       console.error('Failed to load email settings:', error);
@@ -224,70 +246,53 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveEmailSettings = async () => {
-    setSavingEmailSettings(true);
+  const handleSaveTransactionalSettings = async () => {
+    setSavingTransactional(true);
     try {
-      const { data: existing } = await supabase
+      const { error } = await supabase
         .from('email_settings')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
+        .upsert({
+          settings_type: 'transactional',
+          smtp_host: transactionalSettings.smtp_host,
+          smtp_port: transactionalSettings.smtp_port,
+          smtp_username: transactionalSettings.smtp_username,
+          smtp_password: transactionalSettings.smtp_password,
+          from_email: transactionalSettings.from_email,
+          from_name: transactionalSettings.from_name,
+        }, { onConflict: 'settings_type' });
 
-      if (existing) {
-        const { error } = await supabase
-          .from('email_settings')
-          .update({
-            smtp_host: emailSettings.smtp_host,
-            smtp_port: emailSettings.smtp_port,
-            smtp_username: emailSettings.smtp_username,
-            smtp_password: emailSettings.smtp_password,
-            from_email: emailSettings.from_email,
-            from_name: emailSettings.from_name,
-          })
-          .eq('id', existing.id);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('email_settings')
-          .insert({
-            smtp_host: emailSettings.smtp_host,
-            smtp_port: emailSettings.smtp_port,
-            smtp_username: emailSettings.smtp_username,
-            smtp_password: emailSettings.smtp_password,
-            from_email: emailSettings.from_email,
-            from_name: emailSettings.from_name,
-            created_by: userProfile?.id,
-          });
-
-        if (error) throw error;
-      }
-
-      toast.success('Email settings saved');
+      if (error) throw error;
+      toast.success('Transactional email settings saved');
     } catch (error: any) {
-      toast.error('Failed to save email settings');
+      toast.error('Failed to save settings');
       console.error(error);
     } finally {
-      setSavingEmailSettings(false);
+      setSavingTransactional(false);
     }
   };
 
-  const handleTestEmail = async () => {
-    if (!testEmailAddress) {
-      toast.error('Please enter an email address');
-      return;
-    }
-
-    setTestingEmail(true);
+  const handleSaveMarketingSettings = async () => {
+    setSavingMarketing(true);
     try {
-      await handleSaveEmailSettings();
+      const { error } = await supabase
+        .from('email_settings')
+        .upsert({
+          settings_type: 'marketing',
+          smtp_host: marketingSettings.smtp_host,
+          smtp_port: marketingSettings.smtp_port,
+          smtp_username: marketingSettings.smtp_username,
+          smtp_password: marketingSettings.smtp_password,
+          from_email: marketingSettings.from_email,
+          from_name: marketingSettings.from_name,
+        }, { onConflict: 'settings_type' });
 
-      toast.success(`Test email functionality coming soon. Settings saved.`);
+      if (error) throw error;
+      toast.success('Marketing email settings saved');
     } catch (error: any) {
-      toast.error('Failed to send test email');
+      toast.error('Failed to save settings');
       console.error(error);
     } finally {
-      setTestingEmail(false);
+      setSavingMarketing(false);
     }
   };
 
@@ -719,10 +724,10 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Mail className="h-5 w-5" />
-                  Email Settings
+                  Transactional Email Settings
                 </CardTitle>
                 <CardDescription>
-                  Configure the SMTP server and sender details for outgoing emails
+                  Configure SMTP for booking forms, joining instructions, and payment links
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -732,25 +737,25 @@ export default function SettingsPage() {
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="smtp_host">SMTP Host</Label>
+                        <Label htmlFor="trans_smtp_host">SMTP Host</Label>
                         <div className="relative">
                           <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                           <Input
-                            id="smtp_host"
-                            value={emailSettings.smtp_host}
-                            onChange={(e) => setEmailSettings({ ...emailSettings, smtp_host: e.target.value })}
+                            id="trans_smtp_host"
+                            value={transactionalSettings.smtp_host}
+                            onChange={(e) => setTransactionalSettings({ ...transactionalSettings, smtp_host: e.target.value })}
                             placeholder="smtp.example.com"
                             className="pl-10"
                           />
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="smtp_port">SMTP Port</Label>
+                        <Label htmlFor="trans_smtp_port">SMTP Port</Label>
                         <Input
-                          id="smtp_port"
+                          id="trans_smtp_port"
                           type="number"
-                          value={emailSettings.smtp_port}
-                          onChange={(e) => setEmailSettings({ ...emailSettings, smtp_port: parseInt(e.target.value) || 465 })}
+                          value={transactionalSettings.smtp_port}
+                          onChange={(e) => setTransactionalSettings({ ...transactionalSettings, smtp_port: parseInt(e.target.value) || 465 })}
                           placeholder="465"
                         />
                       </div>
@@ -758,31 +763,31 @@ export default function SettingsPage() {
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="smtp_username">SMTP Username</Label>
+                        <Label htmlFor="trans_smtp_username">SMTP Username</Label>
                         <Input
-                          id="smtp_username"
-                          value={emailSettings.smtp_username}
-                          onChange={(e) => setEmailSettings({ ...emailSettings, smtp_username: e.target.value })}
+                          id="trans_smtp_username"
+                          value={transactionalSettings.smtp_username}
+                          onChange={(e) => setTransactionalSettings({ ...transactionalSettings, smtp_username: e.target.value })}
                           placeholder="your@email.com"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="smtp_password">SMTP Password</Label>
+                        <Label htmlFor="trans_smtp_password">SMTP Password</Label>
                         <div className="relative">
                           <Input
-                            id="smtp_password"
-                            type={showPassword ? 'text' : 'password'}
-                            value={emailSettings.smtp_password}
-                            onChange={(e) => setEmailSettings({ ...emailSettings, smtp_password: e.target.value })}
+                            id="trans_smtp_password"
+                            type={showTransactionalPassword ? 'text' : 'password'}
+                            value={transactionalSettings.smtp_password}
+                            onChange={(e) => setTransactionalSettings({ ...transactionalSettings, smtp_password: e.target.value })}
                             placeholder="Enter password"
                             className="pr-10"
                           />
                           <button
                             type="button"
-                            onClick={() => setShowPassword(!showPassword)}
+                            onClick={() => setShowTransactionalPassword(!showTransactionalPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                           >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            {showTransactionalPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
                       </div>
@@ -792,21 +797,21 @@ export default function SettingsPage() {
                       <h4 className="text-sm font-medium mb-3">Sender Details</h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="from_email">From Email</Label>
+                          <Label htmlFor="trans_from_email">From Email</Label>
                           <Input
-                            id="from_email"
+                            id="trans_from_email"
                             type="email"
-                            value={emailSettings.from_email}
-                            onChange={(e) => setEmailSettings({ ...emailSettings, from_email: e.target.value })}
+                            value={transactionalSettings.from_email}
+                            onChange={(e) => setTransactionalSettings({ ...transactionalSettings, from_email: e.target.value })}
                             placeholder="sender@example.com"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="from_name">From Name</Label>
+                          <Label htmlFor="trans_from_name">From Name</Label>
                           <Input
-                            id="from_name"
-                            value={emailSettings.from_name}
-                            onChange={(e) => setEmailSettings({ ...emailSettings, from_name: e.target.value })}
+                            id="trans_from_name"
+                            value={transactionalSettings.from_name}
+                            onChange={(e) => setTransactionalSettings({ ...transactionalSettings, from_name: e.target.value })}
                             placeholder="Company Name"
                           />
                         </div>
@@ -815,10 +820,123 @@ export default function SettingsPage() {
 
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
-                        onClick={handleSaveEmailSettings}
-                        disabled={savingEmailSettings}
+                        onClick={handleSaveTransactionalSettings}
+                        disabled={savingTransactional}
                       >
-                        {savingEmailSettings ? 'Saving...' : 'Save Settings'}
+                        {savingTransactional ? 'Saving...' : 'Save Settings'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {userProfile?.role === 'admin' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Send className="h-5 w-5" />
+                  Marketing Email Settings
+                </CardTitle>
+                <CardDescription>
+                  Configure SMTP for marketing campaigns (can be different from transactional)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingEmailSettings ? (
+                  <p className="text-sm text-muted-foreground">Loading email settings...</p>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="mkt_smtp_host">SMTP Host</Label>
+                        <div className="relative">
+                          <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="mkt_smtp_host"
+                            value={marketingSettings.smtp_host}
+                            onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_host: e.target.value })}
+                            placeholder="smtp.example.com"
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="mkt_smtp_port">SMTP Port</Label>
+                        <Input
+                          id="mkt_smtp_port"
+                          type="number"
+                          value={marketingSettings.smtp_port}
+                          onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_port: parseInt(e.target.value) || 465 })}
+                          placeholder="465"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="mkt_smtp_username">SMTP Username</Label>
+                        <Input
+                          id="mkt_smtp_username"
+                          value={marketingSettings.smtp_username}
+                          onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_username: e.target.value })}
+                          placeholder="your@email.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="mkt_smtp_password">SMTP Password</Label>
+                        <div className="relative">
+                          <Input
+                            id="mkt_smtp_password"
+                            type={showMarketingPassword ? 'text' : 'password'}
+                            value={marketingSettings.smtp_password}
+                            onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_password: e.target.value })}
+                            placeholder="Enter password"
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowMarketingPassword(!showMarketingPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showMarketingPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-medium mb-3">Sender Details</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="mkt_from_email">From Email</Label>
+                          <Input
+                            id="mkt_from_email"
+                            type="email"
+                            value={marketingSettings.from_email}
+                            onChange={(e) => setMarketingSettings({ ...marketingSettings, from_email: e.target.value })}
+                            placeholder="marketing@example.com"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="mkt_from_name">From Name</Label>
+                          <Input
+                            id="mkt_from_name"
+                            value={marketingSettings.from_name}
+                            onChange={(e) => setMarketingSettings({ ...marketingSettings, from_name: e.target.value })}
+                            placeholder="Company Marketing"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <Button
+                        onClick={handleSaveMarketingSettings}
+                        disabled={savingMarketing}
+                      >
+                        {savingMarketing ? 'Saving...' : 'Save Settings'}
                       </Button>
                     </div>
                   </div>
