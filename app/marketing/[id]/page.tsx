@@ -7,7 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { RichTextEditor } from '@/components/rich-text-editor';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -23,6 +26,11 @@ export default function CampaignDetailPage() {
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [editTemplateOpen, setEditTemplateOpen] = useState(false);
+  const [editingBody, setEditingBody] = useState('');
+  const [editingSubject, setEditingSubject] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   useEffect(() => {
     loadCampaignData();
@@ -196,6 +204,40 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleOpenEditTemplate = () => {
+    if (campaign?.email_templates) {
+      setEditingSubject(campaign.email_templates.subject || '');
+      setEditingBody(campaign.email_templates.body || '');
+      setEditTemplateOpen(true);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!campaign?.email_templates?.id) return;
+
+    setSavingTemplate(true);
+    try {
+      const { error } = await supabase
+        .from('email_templates')
+        .update({
+          subject: editingSubject,
+          body: editingBody,
+        })
+        .eq('id', campaign.email_templates.id);
+
+      if (error) throw error;
+
+      toast.success('Template updated successfully');
+      setEditTemplateOpen(false);
+      loadCampaignData();
+    } catch (error: any) {
+      toast.error('Failed to update template');
+      console.error(error);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   if (loading) {
     return (
       <AppShell>
@@ -262,7 +304,19 @@ export default function CampaignDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Email Template</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Email Template</CardTitle>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)}>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Preview
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleOpenEditTemplate}>
+                    <Edit2 className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -275,7 +329,10 @@ export default function CampaignDetailPage() {
               </div>
               <div>
                 <div className="text-sm text-slate-500 mb-1">Body Preview</div>
-                <p className="text-sm text-slate-600 line-clamp-6">{campaign.email_templates?.body || 'N/A'}</p>
+                <div
+                  className="text-sm text-slate-600 line-clamp-6 prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: campaign.email_templates?.body || 'N/A' }}
+                />
               </div>
             </CardContent>
           </Card>
@@ -390,6 +447,78 @@ export default function CampaignDetailPage() {
           </Card>
         )}
       </div>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Email Preview</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <div className="mb-4 p-4 bg-slate-100 rounded-lg">
+              <div className="text-sm text-slate-500">Subject</div>
+              <p className="font-semibold text-lg">{campaign?.email_templates?.subject}</p>
+            </div>
+            <div className="border rounded-lg p-6 bg-white">
+              <div
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: campaign?.email_templates?.body || '' }}
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editTemplateOpen} onOpenChange={setEditTemplateOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Edit Email Template</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto space-y-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Subject</label>
+              <input
+                type="text"
+                value={editingSubject}
+                onChange={(e) => setEditingSubject(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700 mb-1 block">Email Body</label>
+              <Tabs defaultValue="editor" className="w-full">
+                <TabsList className="mb-2">
+                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  <TabsTrigger value="preview">Preview</TabsTrigger>
+                </TabsList>
+                <TabsContent value="editor">
+                  <RichTextEditor
+                    value={editingBody}
+                    onChange={setEditingBody}
+                    placeholder="Write your email content here..."
+                    minHeight="350px"
+                  />
+                </TabsContent>
+                <TabsContent value="preview">
+                  <div className="border rounded-lg p-6 bg-white min-h-[350px]">
+                    <div
+                      className="prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: editingBody }}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setEditTemplateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveTemplate} disabled={savingTemplate}>
+              {savingTemplate ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

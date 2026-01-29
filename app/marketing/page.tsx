@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2 } from 'lucide-react';
+import { RichTextEditor } from '@/components/rich-text-editor';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -43,6 +44,11 @@ export default function MarketingPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
+  const [previewTemplateOpen, setPreviewTemplateOpen] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editTemplateDialogOpen, setEditTemplateDialogOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<any>(null);
+  const [savingTemplateEdit, setSavingTemplateEdit] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -190,6 +196,53 @@ export default function MarketingPage() {
     setCampaignName('');
     setTargetType('business');
     setSelectedTemplateId('');
+  };
+
+  const handlePreviewTemplate = (template: any) => {
+    setPreviewTemplate(template);
+    setPreviewTemplateOpen(true);
+  };
+
+  const handleOpenEditTemplate = (template: any) => {
+    setEditingTemplateId(template.id);
+    setTemplateName(template.name);
+    setTemplateSubject(template.subject);
+    setTemplateBody(template.body);
+    setTemplateCategory(template.category || 'general');
+    setEditTemplateDialogOpen(true);
+  };
+
+  const handleSaveTemplateEdit = async () => {
+    if (!editingTemplateId || !templateName || !templateSubject || !templateBody) {
+      toast.error('Please fill in all template fields');
+      return;
+    }
+
+    setSavingTemplateEdit(true);
+    try {
+      const { error } = await supabase
+        .from('email_templates')
+        .update({
+          name: templateName,
+          subject: templateSubject,
+          body: templateBody,
+          category: templateCategory,
+        })
+        .eq('id', editingTemplateId);
+
+      if (error) throw error;
+
+      toast.success('Template updated successfully');
+      setEditTemplateDialogOpen(false);
+      setEditingTemplateId(null);
+      resetTemplateForm();
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to update template');
+      console.error(error);
+    } finally {
+      setSavingTemplateEdit(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -453,8 +506,30 @@ export default function MarketingPage() {
                 {templates.map((template) => (
                   <Card key={template.id} className="hover:shadow-md transition-shadow">
                     <CardHeader>
-                      <CardTitle className="text-lg">{template.name}</CardTitle>
-                      <Badge variant="outline">{template.category}</Badge>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{template.name}</CardTitle>
+                          <Badge variant="outline" className="mt-1">{template.category}</Badge>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handlePreviewTemplate(template)}
+                            title="Preview"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditTemplate(template)}
+                            title="Edit"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
@@ -464,7 +539,10 @@ export default function MarketingPage() {
                         </div>
                         <div>
                           <div className="text-xs text-slate-500 mb-1">Body Preview</div>
-                          <p className="text-sm text-slate-600 line-clamp-3">{template.body}</p>
+                          <div
+                            className="text-sm text-slate-600 line-clamp-3 prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ __html: template.body }}
+                          />
                         </div>
                         <div className="text-xs text-slate-500 pt-2">
                           Created {format(new Date(template.created_at), 'PP')}
@@ -520,13 +598,14 @@ export default function MarketingPage() {
             </div>
             <div>
               <Label htmlFor="template-body">Email Body</Label>
-              <Textarea
-                id="template-body"
-                placeholder="Write your email content here..."
-                value={templateBody}
-                onChange={(e) => setTemplateBody(e.target.value)}
-                rows={10}
-              />
+              <div className="mt-1">
+                <RichTextEditor
+                  value={templateBody}
+                  onChange={setTemplateBody}
+                  placeholder="Write your email content here..."
+                  minHeight="250px"
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -665,6 +744,112 @@ export default function MarketingPage() {
             <Button onClick={handleGenerateWithAI} disabled={aiGenerating}>
               <Sparkles className="mr-2 h-4 w-4" />
               {aiGenerating ? 'Generating...' : 'Generate Email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewTemplateOpen} onOpenChange={setPreviewTemplateOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Email Preview - {previewTemplate?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <div className="mb-4 p-4 bg-slate-100 rounded-lg">
+              <div className="text-sm text-slate-500">Subject</div>
+              <p className="font-semibold text-lg">{previewTemplate?.subject}</p>
+            </div>
+            <div className="border rounded-lg p-6 bg-white">
+              <div
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: previewTemplate?.body || '' }}
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editTemplateDialogOpen} onOpenChange={(open) => {
+        setEditTemplateDialogOpen(open);
+        if (!open) {
+          setEditingTemplateId(null);
+          resetTemplateForm();
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Edit Email Template</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-template-name">Template Name</Label>
+                <Input
+                  id="edit-template-name"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-template-category">Category</Label>
+                <Select value={templateCategory} onValueChange={setTemplateCategory}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="course_promotion">Course Promotion</SelectItem>
+                    <SelectItem value="newsletter">Newsletter</SelectItem>
+                    <SelectItem value="announcement">Announcement</SelectItem>
+                    <SelectItem value="special_offer">Special Offer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-template-subject">Subject</Label>
+              <Input
+                id="edit-template-subject"
+                value={templateSubject}
+                onChange={(e) => setTemplateSubject(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Email Body</Label>
+              <Tabs defaultValue="editor" className="w-full mt-1">
+                <TabsList className="mb-2">
+                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  <TabsTrigger value="preview">Preview</TabsTrigger>
+                </TabsList>
+                <TabsContent value="editor">
+                  <RichTextEditor
+                    value={templateBody}
+                    onChange={setTemplateBody}
+                    placeholder="Write your email content here..."
+                    minHeight="300px"
+                  />
+                </TabsContent>
+                <TabsContent value="preview">
+                  <div className="border rounded-lg p-6 bg-white min-h-[300px]">
+                    <div
+                      className="prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: templateBody }}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+          <DialogFooter className="pt-4 border-t">
+            <Button variant="outline" onClick={() => {
+              setEditTemplateDialogOpen(false);
+              setEditingTemplateId(null);
+              resetTemplateForm();
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveTemplateEdit} disabled={savingTemplateEdit}>
+              {savingTemplateEdit ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
