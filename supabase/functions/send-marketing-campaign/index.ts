@@ -162,6 +162,8 @@ Deno.serve(async (req: Request) => {
 
         const htmlBody = convertMarkdownToHtml(personalizedBody);
 
+        const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}`;
+
         const emailHtml = `
           <!DOCTYPE html>
           <html>
@@ -189,6 +191,7 @@ Deno.serve(async (req: Request) => {
                 <p>🌐 cpcs-training-courses.co.uk</p>
               </div>
             </div>
+            <img src="${trackingPixelUrl}" width="1" height="1" style="display:none;" alt="" />
           </body>
           </html>
         `;

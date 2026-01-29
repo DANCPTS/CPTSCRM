@@ -564,6 +564,18 @@ export default function CampaignDetailPage() {
                   <div className="text-sm text-slate-500 mb-1">Sent</div>
                   <p className="text-2xl font-bold">{recipients.filter(r => r.sent).length}</p>
                 </div>
+                <div>
+                  <div className="text-sm text-slate-500 mb-1">Opened</div>
+                  <p className="text-2xl font-bold text-green-600">{recipients.filter(r => r.opened_at).length}</p>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-500 mb-1">Open Rate</div>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {recipients.filter(r => r.sent).length > 0
+                      ? Math.round((recipients.filter(r => r.opened_at).length / recipients.filter(r => r.sent).length) * 100)
+                      : 0}%
+                  </p>
+                </div>
               </div>
               <div>
                 <div className="text-sm text-slate-500 mb-1">Created</div>
@@ -745,12 +757,20 @@ export default function CampaignDetailPage() {
                         <p className="text-xs text-slate-500">{recipient.company_name}</p>
                       )}
                     </div>
-                    {recipient.sent && (
-                      <Badge variant="default" className="flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" />
-                        Sent
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {recipient.sent && (
+                        <Badge variant="default" className="flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Sent
+                        </Badge>
+                      )}
+                      {recipient.opened_at && (
+                        <Badge variant="default" className="flex items-center gap-1 bg-green-600">
+                          <Eye className="h-3 w-3" />
+                          Opened{recipient.open_count > 1 ? ` (${recipient.open_count}x)` : ''}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
