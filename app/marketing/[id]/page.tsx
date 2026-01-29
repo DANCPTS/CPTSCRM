@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -33,6 +33,47 @@ export default function CampaignDetailPage() {
   const [editingBody, setEditingBody] = useState('');
   const [editingSubject, setEditingSubject] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('marketing-images')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('marketing-images')
+        .getPublicUrl(fileName);
+
+      const imgTag = `<img src="${publicUrl}" alt="${file.name}" style="max-width: 100%; height: auto;" />`;
+      setEditingBody(prev => prev + '\n' + imgTag);
+      toast.success('Image uploaded and inserted');
+    } catch (error: any) {
+      toast.error('Failed to upload image: ' + error.message);
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     loadCampaignData();
@@ -500,9 +541,30 @@ export default function CampaignDetailPage() {
                 </TabsContent>
                 <TabsContent value="html">
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border">
-                      <Image className="h-4 w-4" />
-                      <span>To add an image, use: <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs">&lt;img src="https://your-image-url.com/image.jpg" alt="description" /&gt;</code></span>
+                    <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Image className="h-4 w-4" />
+                        <span>Add images using HTML or upload directly</span>
+                      </div>
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          disabled={uploadingImage}
+                        />
+                        <Button type="button" variant="outline" size="sm" disabled={uploadingImage} asChild>
+                          <span>
+                            {uploadingImage ? (
+                              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4 mr-1.5" />
+                            )}
+                            {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                          </span>
+                        </Button>
+                      </label>
                     </div>
                     <Textarea
                       value={editingBody}
