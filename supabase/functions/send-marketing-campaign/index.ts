@@ -73,6 +73,18 @@ function convertMarkdownToHtml(text: string): string {
     .replace(/\n/g, '<br>');
 }
 
+function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: string): string {
+  const trackingBaseUrl = `${supabaseUrl}/functions/v1/track-email-click`;
+  return html.replace(
+    /href="(https?:\/\/[^"]+)"/g,
+    (match, url) => {
+      if (url.includes('/functions/v1/')) return match;
+      const encodedUrl = encodeURIComponent(url);
+      return `href="${trackingBaseUrl}?rid=${recipientId}&url=${encodedUrl}"`;
+    }
+  );
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -161,8 +173,10 @@ Deno.serve(async (req: Request) => {
           .replace(/Dear \[.*?\]/g, `Dear ${firstName}`);
 
         const htmlBody = convertMarkdownToHtml(personalizedBody);
+        const trackedHtmlBody = wrapLinksWithTracking(htmlBody, recipient.id, supabaseUrl);
 
         const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}`;
+        const unsubscribeUrl = `${supabaseUrl}/functions/v1/email-unsubscribe?rid=${recipient.id}`;
 
         const emailHtml = `
           <!DOCTYPE html>
@@ -175,6 +189,8 @@ Deno.serve(async (req: Request) => {
               .logo { max-width: 250px; height: auto; margin: 0 auto 15px; display: block; }
               .content { background-color: #f9fafb; padding: 30px; }
               .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+              .unsubscribe { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
+              .unsubscribe a { color: #9ca3af; text-decoration: underline; font-size: 11px; }
             </style>
           </head>
           <body>
@@ -183,12 +199,15 @@ Deno.serve(async (req: Request) => {
                 <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training" class="logo" />
               </div>
               <div class="content">
-                ${htmlBody}
+                ${trackedHtmlBody}
               </div>
               <div class="footer">
                 <p><strong>CPTS Training - Construction and Plant Training Services</strong></p>
-                <p>📞 01234 604 151 | ✉️ daniel@cpts.uk</p>
-                <p>🌐 cpcs-training-courses.co.uk</p>
+                <p>01234 604 151 | daniel@cpts.uk</p>
+                <p>cpcs-training-courses.co.uk</p>
+                <div class="unsubscribe">
+                  <a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a>
+                </div>
               </div>
             </div>
             <img src="${trackingPixelUrl}" width="1" height="1" style="display:none;" alt="" />
@@ -204,7 +223,11 @@ Deno.serve(async (req: Request) => {
 
         await supabase
           .from("campaign_recipients")
-          .update({ sent: true, sent_at: new Date().toISOString() })
+          .update({
+            sent: true,
+            sent_at: new Date().toISOString(),
+            delivery_status: 'delivered'
+          })
           .eq("id", recipient.id);
         
         sentCount++;

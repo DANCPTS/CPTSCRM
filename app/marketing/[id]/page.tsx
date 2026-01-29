@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, AlertTriangle, Ban, Flag, TrendingUp, Users, BarChart3, Link2, ExternalLink } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -17,6 +17,282 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+
+function StatCard({ label, value, percentage, icon: Icon, color, subLabel }: {
+  label: string;
+  value: number;
+  percentage?: number;
+  icon: any;
+  color: string;
+  subLabel?: string;
+}) {
+  const colorClasses: Record<string, { bg: string; text: string; bar: string }> = {
+    green: { bg: 'bg-green-50', text: 'text-green-600', bar: 'bg-green-500' },
+    blue: { bg: 'bg-blue-50', text: 'text-blue-600', bar: 'bg-blue-500' },
+    orange: { bg: 'bg-orange-50', text: 'text-orange-600', bar: 'bg-orange-500' },
+    red: { bg: 'bg-red-50', text: 'text-red-600', bar: 'bg-red-500' },
+    yellow: { bg: 'bg-yellow-50', text: 'text-yellow-600', bar: 'bg-yellow-500' },
+    slate: { bg: 'bg-slate-50', text: 'text-slate-600', bar: 'bg-slate-400' },
+  };
+
+  const colors = colorClasses[color] || colorClasses.slate;
+
+  return (
+    <div className="bg-white border rounded-xl p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`p-2 rounded-lg ${colors.bg}`}>
+          <Icon className={`h-4 w-4 ${colors.text}`} />
+        </div>
+        <div className="flex-1">
+          <div className="text-sm text-slate-500">{label}</div>
+          {subLabel && <div className="text-xs text-slate-400">{subLabel}</div>}
+        </div>
+        <div className="text-right">
+          <div className="text-xl font-bold text-slate-900">{value}</div>
+          {percentage !== undefined && (
+            <div className={`text-sm font-medium ${colors.text}`}>{percentage.toFixed(2)}%</div>
+          )}
+        </div>
+      </div>
+      {percentage !== undefined && (
+        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${colors.bar} transition-all duration-500`}
+            style={{ width: `${Math.min(percentage, 100)}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CampaignStatsCard({ campaign, recipients, linkClicks }: {
+  campaign: any;
+  recipients: any[];
+  linkClicks: any[];
+}) {
+  const sentCount = recipients.filter(r => r.sent).length;
+  const openedCount = recipients.filter(r => r.opened_at).length;
+  const clickedCount = recipients.filter(r => r.clicked_at).length;
+  const unsubscribedCount = recipients.filter(r => r.unsubscribed_at).length;
+  const bouncedHardCount = recipients.filter(r => r.bounce_type === 'hard').length;
+  const bouncedSoftCount = recipients.filter(r => r.bounce_type === 'soft').length;
+  const spamCount = recipients.filter(r => r.spam_reported_at).length;
+
+  const openRate = sentCount > 0 ? (openedCount / sentCount) * 100 : 0;
+  const clickRate = sentCount > 0 ? (clickedCount / sentCount) * 100 : 0;
+  const clickToOpenRate = openedCount > 0 ? (clickedCount / openedCount) * 100 : 0;
+  const unsubscribeRate = sentCount > 0 ? (unsubscribedCount / sentCount) * 100 : 0;
+  const hardBounceRate = sentCount > 0 ? (bouncedHardCount / sentCount) * 100 : 0;
+  const softBounceRate = sentCount > 0 ? (bouncedSoftCount / sentCount) * 100 : 0;
+  const spamRate = sentCount > 0 ? (spamCount / sentCount) * 100 : 0;
+
+  const linkStats = linkClicks.reduce((acc: Record<string, number>, click) => {
+    const url = click.url || 'Unknown';
+    acc[url] = (acc[url] || 0) + 1;
+    return acc;
+  }, {});
+
+  const sortedLinks = Object.entries(linkStats)
+    .sort(([, a], [, b]) => (b as number) - (a as number))
+    .slice(0, 10);
+
+  const [activeTab, setActiveTab] = useState('summary');
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Campaign Report
+          </CardTitle>
+          {campaign.sent_at && (
+            <Badge variant="outline" className="text-slate-500">
+              Sent {format(new Date(campaign.sent_at), 'PPp')}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="mb-4 w-full justify-start">
+            <TabsTrigger value="summary">Summary</TabsTrigger>
+            <TabsTrigger value="recipients">Recipients Activity</TabsTrigger>
+            <TabsTrigger value="links">Link Activity</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="summary" className="space-y-4">
+            <div className="bg-slate-50 rounded-xl p-4 mb-4">
+              <div className="text-sm text-slate-500 mb-1">Total Emails Sent</div>
+              <div className="text-4xl font-bold text-slate-900">{sentCount}</div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <StatCard
+                label="Opened"
+                value={openedCount}
+                percentage={openRate}
+                icon={Eye}
+                color="green"
+              />
+              <StatCard
+                label="Clicked"
+                value={clickedCount}
+                percentage={clickRate}
+                icon={MousePointer}
+                color="blue"
+              />
+              <StatCard
+                label="Click to Open"
+                value={clickedCount}
+                percentage={clickToOpenRate}
+                icon={TrendingUp}
+                color="orange"
+                subLabel="of openers"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <StatCard
+                label="Unsubscribed"
+                value={unsubscribedCount}
+                percentage={unsubscribeRate}
+                icon={Ban}
+                color="slate"
+              />
+              <StatCard
+                label="Hard Bounces"
+                value={bouncedHardCount}
+                percentage={hardBounceRate}
+                icon={AlertTriangle}
+                color="red"
+              />
+              <StatCard
+                label="Soft Bounces"
+                value={bouncedSoftCount}
+                percentage={softBounceRate}
+                icon={AlertTriangle}
+                color="yellow"
+              />
+              <StatCard
+                label="Spam Reports"
+                value={spamCount}
+                percentage={spamRate}
+                icon={Flag}
+                color="red"
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="recipients" className="space-y-3">
+            <div className="flex items-center gap-4 text-sm text-slate-500 mb-2">
+              <span className="flex items-center gap-1"><Users className="h-4 w-4" /> {recipients.length} total</span>
+              <span className="flex items-center gap-1 text-green-600"><Eye className="h-4 w-4" /> {openedCount} opened</span>
+              <span className="flex items-center gap-1 text-blue-600"><MousePointer className="h-4 w-4" /> {clickedCount} clicked</span>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto space-y-2">
+              {recipients.map((recipient) => (
+                <div
+                  key={recipient.id}
+                  className="flex items-center justify-between p-3 border rounded-lg bg-white"
+                >
+                  <div className="flex items-center gap-3">
+                    <User className="h-4 w-4 text-slate-400" />
+                    <div>
+                      <p className="font-medium text-sm">{recipient.name}</p>
+                      <p className="text-xs text-slate-500">{recipient.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {recipient.sent && (
+                      <Badge variant="outline" className="text-xs">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Sent
+                      </Badge>
+                    )}
+                    {recipient.opened_at && (
+                      <Badge className="bg-green-100 text-green-700 text-xs">
+                        <Eye className="h-3 w-3 mr-1" />
+                        Opened {recipient.open_count > 1 ? `(${recipient.open_count}x)` : ''}
+                      </Badge>
+                    )}
+                    {recipient.clicked_at && (
+                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                        <MousePointer className="h-3 w-3 mr-1" />
+                        Clicked {recipient.click_count > 1 ? `(${recipient.click_count}x)` : ''}
+                      </Badge>
+                    )}
+                    {recipient.unsubscribed_at && (
+                      <Badge className="bg-slate-100 text-slate-700 text-xs">
+                        <Ban className="h-3 w-3 mr-1" />
+                        Unsubscribed
+                      </Badge>
+                    )}
+                    {recipient.bounce_type && (
+                      <Badge className={recipient.bounce_type === 'hard' ? 'bg-red-100 text-red-700 text-xs' : 'bg-yellow-100 text-yellow-700 text-xs'}>
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        {recipient.bounce_type === 'hard' ? 'Hard Bounce' : 'Soft Bounce'}
+                      </Badge>
+                    )}
+                    {recipient.spam_reported_at && (
+                      <Badge className="bg-red-100 text-red-700 text-xs">
+                        <Flag className="h-3 w-3 mr-1" />
+                        Spam
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="links" className="space-y-3">
+            <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
+              <Link2 className="h-4 w-4" />
+              <span>{linkClicks.length} total clicks on {sortedLinks.length} unique links</span>
+            </div>
+            {sortedLinks.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <MousePointer className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>No link clicks recorded yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sortedLinks.map(([url, count], index) => (
+                  <div
+                    key={url}
+                    className="flex items-center gap-3 p-3 border rounded-lg bg-white"
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-medium text-sm">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1 truncate"
+                      >
+                        {url.length > 60 ? url.substring(0, 60) + '...' : url}
+                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-mono">
+                        {count as number} clicks
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function CampaignDetailPage() {
   const params = useParams();
@@ -39,6 +315,8 @@ export default function CampaignDetailPage() {
   const [excelRecipients, setExcelRecipients] = useState<{email: string; name: string; company_name?: string}[]>([]);
   const [aiPrompt, setAiPrompt] = useState('');
   const [generatingAi, setGeneratingAi] = useState(false);
+  const [linkClicks, setLinkClicks] = useState<any[]>([]);
+  const [activeReportTab, setActiveReportTab] = useState('summary');
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -229,6 +507,14 @@ export default function CampaignDetailPage() {
 
       if (recipientsError) throw recipientsError;
       setRecipients(recipientsData || []);
+
+      const { data: linkClicksData } = await supabase
+        .from('email_link_clicks')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .order('clicked_at', { ascending: false });
+
+      setLinkClicks(linkClicksData || []);
 
       if (campaignData.target_type === 'individual') {
         const { data: candidatesData, error: candidatesError } = await supabase
@@ -550,45 +836,11 @@ export default function CampaignDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Campaign Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">Total Recipients</div>
-                  <p className="text-2xl font-bold">{recipients.length}</p>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">Sent</div>
-                  <p className="text-2xl font-bold">{recipients.filter(r => r.sent).length}</p>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">Opened</div>
-                  <p className="text-2xl font-bold text-green-600">{recipients.filter(r => r.opened_at).length}</p>
-                </div>
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">Open Rate</div>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {recipients.filter(r => r.sent).length > 0
-                      ? Math.round((recipients.filter(r => r.opened_at).length / recipients.filter(r => r.sent).length) * 100)
-                      : 0}%
-                  </p>
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-500 mb-1">Created</div>
-                <p className="font-medium">{format(new Date(campaign.created_at), 'PPpp')}</p>
-              </div>
-              {campaign.sent_at && (
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">Sent At</div>
-                  <p className="font-medium">{format(new Date(campaign.sent_at), 'PPpp')}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <CampaignStatsCard
+            campaign={campaign}
+            recipients={recipients}
+            linkClicks={linkClicks}
+          />
         </div>
 
         {campaign.status === 'draft' && (
