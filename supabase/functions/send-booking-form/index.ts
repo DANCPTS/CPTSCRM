@@ -7,11 +7,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-async function sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
+interface EmailSettings {
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  from_email: string;
+  from_name: string;
+}
+
+async function sendEmail(to: string, subject: string, htmlBody: string, settings: EmailSettings): Promise<void> {
   try {
     const conn = await Deno.connectTls({
-      hostname: 'smtp.cpts-host.beep.pl',
-      port: 465,
+      hostname: settings.smtp_host,
+      port: settings.smtp_port,
     });
 
     const encoder = new TextEncoder();
@@ -31,17 +40,18 @@ async function sendEmail(to: string, subject: string, htmlBody: string): Promise
 
     await readResponse();
 
-    await sendCommand('EHLO cpts-host.beep.pl');
+    const hostPart = settings.smtp_host.split('.').slice(-2).join('.');
+    await sendCommand(`EHLO ${hostPart}`);
     await sendCommand('AUTH LOGIN');
-    await sendCommand(btoa('daniel@cpts.uk'));
-    await sendCommand(btoa('Da.2023niel'));
+    await sendCommand(btoa(settings.smtp_username));
+    await sendCommand(btoa(settings.smtp_password));
 
-    await sendCommand('MAIL FROM:<daniel@cpts.uk>');
+    await sendCommand(`MAIL FROM:<${settings.from_email}>`);
     await sendCommand(`RCPT TO:<${to}>`);
     await sendCommand('DATA');
 
     const emailContent = [
-      `From: CPTS Training <daniel@cpts.uk>`,
+      `From: ${settings.from_name} <${settings.from_email}>`,
       `To: ${to}`,
       `Subject: ${subject}`,
       `MIME-Version: 1.0`,
@@ -98,8 +108,33 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    const { data: emailSettingsData, error: settingsError } = await supabase
+      .from('email_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+
+    if (settingsError || !emailSettingsData) {
+      return new Response(
+        JSON.stringify({ error: "Email settings not configured" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const emailSettings: EmailSettings = {
+      smtp_host: emailSettingsData.smtp_host,
+      smtp_port: emailSettingsData.smtp_port,
+      smtp_username: emailSettingsData.smtp_username,
+      smtp_password: emailSettingsData.smtp_password,
+      from_email: emailSettingsData.from_email,
+      from_name: emailSettingsData.from_name,
+    };
 
     const { data: lead, error: leadError } = await supabase
       .from('leads')
@@ -255,7 +290,7 @@ Deno.serve(async (req: Request) => {
             <p>Best regards,<br>CPTS Training Team</p>
           </div>
           <div class="footer">
-            <p>CPTS Training | daniel@cpts.uk</p>
+            <p>${emailSettings.from_name} | ${emailSettings.from_email}</p>
           </div>
         </div>
       </body>
@@ -268,7 +303,8 @@ Deno.serve(async (req: Request) => {
     await sendEmail(
       leadEmail,
       finalSubject,
-      finalHtml
+      finalHtml,
+      emailSettings
     );
 
     return new Response(

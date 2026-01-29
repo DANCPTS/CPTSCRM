@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Download, Upload, Plus, Trash2, Key, Users as UsersIcon, UserCog, Palette, Moon, Sun, Waves, Trees } from 'lucide-react';
+import { Download, Upload, Plus, Trash2, Key, Users as UsersIcon, UserCog, Palette, Moon, Sun, Waves, Trees, Mail, Server, Eye, EyeOff, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
@@ -88,6 +88,19 @@ export default function SettingsPage() {
   const [processing, setProcessing] = useState(false);
   const [calendarColors, setCalendarColors] = useState<Record<string, string>>({});
   const [loadingColors, setLoadingColors] = useState(true);
+  const [emailSettings, setEmailSettings] = useState({
+    smtp_host: '',
+    smtp_port: 465,
+    smtp_username: '',
+    smtp_password: '',
+    from_email: '',
+    from_name: '',
+  });
+  const [loadingEmailSettings, setLoadingEmailSettings] = useState(true);
+  const [savingEmailSettings, setSavingEmailSettings] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
 
   useEffect(() => {
     setMounted(true);
@@ -179,9 +192,104 @@ export default function SettingsPage() {
   useEffect(() => {
     if (userProfile?.role === 'admin') {
       loadUsers();
+      loadEmailSettings();
     }
     loadCalendarColors();
   }, [userProfile]);
+
+  const loadEmailSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setEmailSettings({
+          smtp_host: data.smtp_host || '',
+          smtp_port: data.smtp_port || 465,
+          smtp_username: data.smtp_username || '',
+          smtp_password: data.smtp_password || '',
+          from_email: data.from_email || '',
+          from_name: data.from_name || '',
+        });
+      }
+    } catch (error: any) {
+      console.error('Failed to load email settings:', error);
+    } finally {
+      setLoadingEmailSettings(false);
+    }
+  };
+
+  const handleSaveEmailSettings = async () => {
+    setSavingEmailSettings(true);
+    try {
+      const { data: existing } = await supabase
+        .from('email_settings')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('email_settings')
+          .update({
+            smtp_host: emailSettings.smtp_host,
+            smtp_port: emailSettings.smtp_port,
+            smtp_username: emailSettings.smtp_username,
+            smtp_password: emailSettings.smtp_password,
+            from_email: emailSettings.from_email,
+            from_name: emailSettings.from_name,
+          })
+          .eq('id', existing.id);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('email_settings')
+          .insert({
+            smtp_host: emailSettings.smtp_host,
+            smtp_port: emailSettings.smtp_port,
+            smtp_username: emailSettings.smtp_username,
+            smtp_password: emailSettings.smtp_password,
+            from_email: emailSettings.from_email,
+            from_name: emailSettings.from_name,
+            created_by: userProfile?.id,
+          });
+
+        if (error) throw error;
+      }
+
+      toast.success('Email settings saved');
+    } catch (error: any) {
+      toast.error('Failed to save email settings');
+      console.error(error);
+    } finally {
+      setSavingEmailSettings(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmailAddress) {
+      toast.error('Please enter an email address');
+      return;
+    }
+
+    setTestingEmail(true);
+    try {
+      await handleSaveEmailSettings();
+
+      toast.success(`Test email functionality coming soon. Settings saved.`);
+    } catch (error: any) {
+      toast.error('Failed to send test email');
+      console.error(error);
+    } finally {
+      setTestingEmail(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -605,6 +713,119 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          {userProfile?.role === 'admin' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5" />
+                  Email Settings
+                </CardTitle>
+                <CardDescription>
+                  Configure the SMTP server and sender details for outgoing emails
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingEmailSettings ? (
+                  <p className="text-sm text-muted-foreground">Loading email settings...</p>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="smtp_host">SMTP Host</Label>
+                        <div className="relative">
+                          <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="smtp_host"
+                            value={emailSettings.smtp_host}
+                            onChange={(e) => setEmailSettings({ ...emailSettings, smtp_host: e.target.value })}
+                            placeholder="smtp.example.com"
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="smtp_port">SMTP Port</Label>
+                        <Input
+                          id="smtp_port"
+                          type="number"
+                          value={emailSettings.smtp_port}
+                          onChange={(e) => setEmailSettings({ ...emailSettings, smtp_port: parseInt(e.target.value) || 465 })}
+                          placeholder="465"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="smtp_username">SMTP Username</Label>
+                        <Input
+                          id="smtp_username"
+                          value={emailSettings.smtp_username}
+                          onChange={(e) => setEmailSettings({ ...emailSettings, smtp_username: e.target.value })}
+                          placeholder="your@email.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="smtp_password">SMTP Password</Label>
+                        <div className="relative">
+                          <Input
+                            id="smtp_password"
+                            type={showPassword ? 'text' : 'password'}
+                            value={emailSettings.smtp_password}
+                            onChange={(e) => setEmailSettings({ ...emailSettings, smtp_password: e.target.value })}
+                            placeholder="Enter password"
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-medium mb-3">Sender Details</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="from_email">From Email</Label>
+                          <Input
+                            id="from_email"
+                            type="email"
+                            value={emailSettings.from_email}
+                            onChange={(e) => setEmailSettings({ ...emailSettings, from_email: e.target.value })}
+                            placeholder="sender@example.com"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="from_name">From Name</Label>
+                          <Input
+                            id="from_name"
+                            value={emailSettings.from_name}
+                            onChange={(e) => setEmailSettings({ ...emailSettings, from_name: e.target.value })}
+                            placeholder="Company Name"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <Button
+                        onClick={handleSaveEmailSettings}
+                        disabled={savingEmailSettings}
+                      >
+                        {savingEmailSettings ? 'Saving...' : 'Save Settings'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {userProfile?.role === 'admin' && (
             <Card>
