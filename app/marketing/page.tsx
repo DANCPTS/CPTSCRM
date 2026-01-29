@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2 } from 'lucide-react';
 import { RichTextEditor } from '@/components/rich-text-editor';
+import { EmailPreview } from '@/components/email-preview';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -750,21 +751,15 @@ export default function MarketingPage() {
       </Dialog>
 
       <Dialog open={previewTemplateOpen} onOpenChange={setPreviewTemplateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Email Preview - {previewTemplate?.name}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto">
-            <div className="mb-4 p-4 bg-slate-100 rounded-lg">
-              <div className="text-sm text-slate-500">Subject</div>
-              <p className="font-semibold text-lg">{previewTemplate?.subject}</p>
-            </div>
-            <div className="border rounded-lg p-6 bg-white">
-              <div
-                className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: previewTemplate?.body || '' }}
-              />
-            </div>
+            <EmailPreview
+              subject={previewTemplate?.subject || ''}
+              body={previewTemplate?.body || ''}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -830,12 +825,10 @@ export default function MarketingPage() {
                   />
                 </TabsContent>
                 <TabsContent value="preview">
-                  <div className="border rounded-lg p-6 bg-white min-h-[300px]">
-                    <div
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: templateBody }}
-                    />
-                  </div>
+                  <EmailPreview
+                    subject={templateSubject}
+                    body={templateBody}
+                  />
                 </TabsContent>
               </Tabs>
             </div>
