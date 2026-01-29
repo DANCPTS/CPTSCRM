@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -34,6 +34,127 @@ export default function CampaignDetailPage() {
   const [editingSubject, setEditingSubject] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingExcel, setUploadingExcel] = useState(false);
+  const [excelRecipients, setExcelRecipients] = useState<{email: string; name: string; company_name?: string}[]>([]);
+
+  const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+
+    if (!validTypes.includes(file.type) && !file.name.endsWith('.csv') && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('Please select an Excel (.xlsx, .xls) or CSV file');
+      return;
+    }
+
+    setUploadingExcel(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+
+      if (lines.length < 2) {
+        toast.error('File must have a header row and at least one data row');
+        return;
+      }
+
+      const delimiter = lines[0].includes('\t') ? '\t' : ',';
+      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+
+      const emailIndex = headers.findIndex(h => h.includes('email'));
+      const nameIndex = headers.findIndex(h => h.includes('name') && !h.includes('company'));
+      const firstNameIndex = headers.findIndex(h => h === 'first name' || h === 'firstname' || h === 'first_name');
+      const lastNameIndex = headers.findIndex(h => h === 'last name' || h === 'lastname' || h === 'last_name');
+      const companyIndex = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('organisation') || h.includes('organization'));
+
+      if (emailIndex === -1) {
+        toast.error('File must have an "Email" column');
+        return;
+      }
+
+      const parsed: {email: string; name: string; company_name?: string}[] = [];
+      const existingEmails = new Set(recipients.map(r => r.email.toLowerCase()));
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const email = values[emailIndex]?.toLowerCase();
+
+        if (email && email.includes('@') && !existingEmails.has(email)) {
+          let name = '';
+          if (firstNameIndex !== -1 || lastNameIndex !== -1) {
+            const firstName = firstNameIndex !== -1 ? values[firstNameIndex] || '' : '';
+            const lastName = lastNameIndex !== -1 ? values[lastNameIndex] || '' : '';
+            name = `${firstName} ${lastName}`.trim();
+          } else if (nameIndex !== -1) {
+            name = values[nameIndex] || '';
+          }
+
+          const companyName = companyIndex !== -1 ? values[companyIndex] : undefined;
+
+          parsed.push({
+            email,
+            name: name || email.split('@')[0],
+            company_name: companyName || undefined,
+          });
+          existingEmails.add(email);
+        }
+      }
+
+      if (parsed.length === 0) {
+        toast.error('No valid new email addresses found in the file');
+        return;
+      }
+
+      setExcelRecipients(parsed);
+      toast.success(`Found ${parsed.length} valid contacts to add`);
+    } catch (error: any) {
+      toast.error('Failed to parse file: ' + error.message);
+    } finally {
+      setUploadingExcel(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAddExcelRecipients = async () => {
+    if (excelRecipients.length === 0) return;
+
+    try {
+      const newRecipients = excelRecipients.map(r => ({
+        campaign_id: campaignId,
+        email: r.email,
+        name: r.name,
+        company_name: r.company_name || null,
+        source: 'excel_upload',
+      }));
+
+      const { error } = await supabase
+        .from('campaign_recipients')
+        .insert(newRecipients);
+
+      if (error) throw error;
+
+      const { error: updateError } = await supabase
+        .from('marketing_campaigns')
+        .update({ recipients_count: recipients.length + newRecipients.length })
+        .eq('id', campaignId);
+
+      if (updateError) throw updateError;
+
+      toast.success(`Added ${newRecipients.length} recipients from Excel`);
+      setExcelRecipients([]);
+      loadCampaignData();
+    } catch (error: any) {
+      toast.error('Failed to add recipients: ' + error.message);
+    }
+  };
+
+  const handleRemoveExcelRecipient = (email: string) => {
+    setExcelRecipients(prev => prev.filter(r => r.email !== email));
+  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -126,21 +247,22 @@ export default function CampaignDetailPage() {
 
         setAvailableRecipients(Array.from(uniqueEmails.values()));
       } else {
-        const { data: companiesData, error: companiesError } = await supabase
-          .from('companies')
-          .select('name, email')
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('first_name, last_name, email, companies(name)')
           .not('email', 'is', null)
           .order('created_at', { ascending: false });
 
-        if (companiesError) throw companiesError;
+        if (contactsError) throw contactsError;
 
         const uniqueEmails = new Map();
-        (companiesData || []).forEach((company: any) => {
-          if (company.email && !uniqueEmails.has(company.email.toLowerCase())) {
-            uniqueEmails.set(company.email.toLowerCase(), {
-              email: company.email,
-              name: company.name || 'Unknown',
-              company_name: company.name,
+        (contactsData || []).forEach((contact: any) => {
+          if (contact.email && !uniqueEmails.has(contact.email.toLowerCase())) {
+            const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+            uniqueEmails.set(contact.email.toLowerCase(), {
+              email: contact.email,
+              name: fullName || 'Unknown',
+              company_name: contact.companies?.name || null,
             });
           }
         });
@@ -187,6 +309,7 @@ export default function CampaignDetailPage() {
           email: r.email,
           name: r.name,
           company_name: r.company_name || null,
+          source: campaign.target_type === 'individual' ? 'candidate' : 'contact',
         }));
 
       const { error } = await supabase
@@ -410,51 +533,149 @@ export default function CampaignDetailPage() {
         </div>
 
         {campaign.status === 'draft' && (
-          <Card className="mt-6">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Add Recipients</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleSelectAll}>
-                    {selectedRecipients.size === filteredAvailable.length ? 'Deselect All' : 'Select All'}
-                  </Button>
-                  <Button onClick={handleAddRecipients} disabled={selectedRecipients.size === 0}>
-                    Add {selectedRecipients.size > 0 ? `(${selectedRecipients.size})` : ''}
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {filteredAvailable.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-4">
-                  No more {campaign.target_type === 'individual' ? 'individuals' : 'businesses'} available to add
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {filteredAvailable.map((recipient) => (
-                    <div
-                      key={recipient.email}
-                      className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer"
-                      onClick={() => handleToggleRecipient(recipient.email)}
-                    >
-                      <Checkbox
-                        checked={selectedRecipients.has(recipient.email)}
-                        onCheckedChange={() => handleToggleRecipient(recipient.email)}
-                      />
-                      <User className="h-4 w-4 text-slate-400" />
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{recipient.name}</p>
-                        <p className="text-xs text-slate-500">{recipient.email}</p>
-                        {recipient.company_name && (
-                          <p className="text-xs text-slate-500">{recipient.company_name}</p>
+          <div className="mt-6 space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5" />
+                    Upload from Excel/CSV
+                  </CardTitle>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={handleExcelUpload}
+                      className="hidden"
+                      disabled={uploadingExcel}
+                    />
+                    <Button variant="outline" asChild disabled={uploadingExcel}>
+                      <span>
+                        {uploadingExcel ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
                         )}
+                        {uploadingExcel ? 'Processing...' : 'Upload File'}
+                      </span>
+                    </Button>
+                  </label>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-slate-500 mb-4">
+                  Upload a CSV or Excel file with columns: <strong>Email</strong> (required), <strong>Name</strong> or <strong>First Name/Last Name</strong>, and optionally <strong>Company</strong>.
+                </p>
+
+                {excelRecipients.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">{excelRecipients.length} contacts ready to add</p>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setExcelRecipients([])}>
+                          <X className="h-4 w-4 mr-1" />
+                          Clear
+                        </Button>
+                        <Button size="sm" onClick={handleAddExcelRecipients}>
+                          Add All ({excelRecipients.length})
+                        </Button>
                       </div>
                     </div>
-                  ))}
+                    <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-2 bg-slate-50">
+                      {excelRecipients.map((recipient) => (
+                        <div
+                          key={recipient.email}
+                          className="flex items-center justify-between p-2 bg-white rounded border"
+                        >
+                          <div className="flex items-center gap-3">
+                            <User className="h-4 w-4 text-slate-400" />
+                            <div>
+                              <p className="font-medium text-sm">{recipient.name}</p>
+                              <p className="text-xs text-slate-500">{recipient.email}</p>
+                              {recipient.company_name && (
+                                <p className="text-xs text-slate-400 flex items-center gap-1">
+                                  <Building2 className="h-3 w-3" />
+                                  {recipient.company_name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveExcelRecipient(recipient.email)}
+                          >
+                            <Trash2 className="h-4 w-4 text-slate-400" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    {campaign.target_type === 'individual' ? (
+                      <>
+                        <User className="h-5 w-5" />
+                        Add from Candidates
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="h-5 w-5" />
+                        Add from Contacts
+                      </>
+                    )}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={handleSelectAll} disabled={filteredAvailable.length === 0}>
+                      {selectedRecipients.size === filteredAvailable.length && filteredAvailable.length > 0 ? 'Deselect All' : 'Select All'}
+                    </Button>
+                    <Button onClick={handleAddRecipients} disabled={selectedRecipients.size === 0}>
+                      Add {selectedRecipients.size > 0 ? `(${selectedRecipients.size})` : ''}
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent>
+                {filteredAvailable.length === 0 ? (
+                  <p className="text-sm text-slate-500 text-center py-4">
+                    No more {campaign.target_type === 'individual' ? 'candidates' : 'contacts'} available to add
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {filteredAvailable.map((recipient) => (
+                      <div
+                        key={recipient.email}
+                        className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer"
+                        onClick={() => handleToggleRecipient(recipient.email)}
+                      >
+                        <Checkbox
+                          checked={selectedRecipients.has(recipient.email)}
+                          onCheckedChange={() => handleToggleRecipient(recipient.email)}
+                        />
+                        <User className="h-4 w-4 text-slate-400" />
+                        <div className="flex-1">
+                          <p className="font-medium text-sm">{recipient.name}</p>
+                          <p className="text-xs text-slate-500">{recipient.email}</p>
+                          {recipient.company_name && (
+                            <p className="text-xs text-slate-400 flex items-center gap-1">
+                              <Building2 className="h-3 w-3" />
+                              {recipient.company_name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {recipients.length > 0 && (
