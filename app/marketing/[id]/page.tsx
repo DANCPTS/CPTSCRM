@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 export default function CampaignDetailPage() {
   const params = useParams();
@@ -43,59 +44,61 @@ export default function CampaignDetailPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
+    const validExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
 
-    if (!validTypes.includes(file.type) && !file.name.endsWith('.csv') && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+    if (!validExtensions.includes(fileExt)) {
       toast.error('Please select an Excel (.xlsx, .xls) or CSV file');
       return;
     }
 
     setUploadingExcel(true);
     try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { header: 1 });
 
-      if (lines.length < 2) {
+      if (jsonData.length < 2) {
         toast.error('File must have a header row and at least one data row');
         return;
       }
 
-      const delimiter = lines[0].includes('\t') ? '\t' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+      const headerRow = (jsonData[0] as any[]).map((h: any) => String(h || '').trim().toLowerCase());
 
-      const emailIndex = headers.findIndex(h => h.includes('email'));
-      const nameIndex = headers.findIndex(h => h.includes('name') && !h.includes('company'));
-      const firstNameIndex = headers.findIndex(h => h === 'first name' || h === 'firstname' || h === 'first_name');
-      const lastNameIndex = headers.findIndex(h => h === 'last name' || h === 'lastname' || h === 'last_name');
-      const companyIndex = headers.findIndex(h => h.includes('company') || h.includes('business') || h.includes('organisation') || h.includes('organization'));
+      const emailIndex = headerRow.findIndex(h => h.includes('email'));
+      const nameIndex = headerRow.findIndex(h => h.includes('name') && !h.includes('company') && !h.includes('first') && !h.includes('last'));
+      const firstNameIndex = headerRow.findIndex(h => h === 'first name' || h === 'firstname' || h === 'first_name' || h === 'first');
+      const lastNameIndex = headerRow.findIndex(h => h === 'last name' || h === 'lastname' || h === 'last_name' || h === 'last' || h === 'surname');
+      const companyIndex = headerRow.findIndex(h => h.includes('company') || h.includes('business') || h.includes('organisation') || h.includes('organization'));
 
       if (emailIndex === -1) {
-        toast.error('File must have an "Email" column');
+        toast.error(`File must have an "Email" column. Found columns: ${headerRow.join(', ')}`);
         return;
       }
 
       const parsed: {email: string; name: string; company_name?: string}[] = [];
       const existingEmails = new Set(recipients.map(r => r.email.toLowerCase()));
 
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(delimiter).map(v => v.trim().replace(/"/g, ''));
-        const email = values[emailIndex]?.toLowerCase();
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as any[];
+        if (!row || row.length === 0) continue;
+
+        const emailValue = row[emailIndex];
+        const email = String(emailValue || '').trim().toLowerCase();
 
         if (email && email.includes('@') && !existingEmails.has(email)) {
           let name = '';
           if (firstNameIndex !== -1 || lastNameIndex !== -1) {
-            const firstName = firstNameIndex !== -1 ? values[firstNameIndex] || '' : '';
-            const lastName = lastNameIndex !== -1 ? values[lastNameIndex] || '' : '';
+            const firstName = firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : '';
+            const lastName = lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : '';
             name = `${firstName} ${lastName}`.trim();
           } else if (nameIndex !== -1) {
-            name = values[nameIndex] || '';
+            name = String(row[nameIndex] || '').trim();
           }
 
-          const companyName = companyIndex !== -1 ? values[companyIndex] : undefined;
+          const companyName = companyIndex !== -1 ? String(row[companyIndex] || '').trim() : undefined;
 
           parsed.push({
             email,
