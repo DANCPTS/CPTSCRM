@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2 } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
@@ -483,6 +484,10 @@ export default function CampaignDetailPage() {
               <Tabs defaultValue="editor" className="w-full">
                 <TabsList className="mb-2">
                   <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  <TabsTrigger value="html" className="gap-1">
+                    <Code className="h-3.5 w-3.5" />
+                    HTML
+                  </TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                 </TabsList>
                 <TabsContent value="editor">
@@ -492,6 +497,20 @@ export default function CampaignDetailPage() {
                     placeholder="Write your email content here..."
                     minHeight="350px"
                   />
+                </TabsContent>
+                <TabsContent value="html">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border">
+                      <Image className="h-4 w-4" />
+                      <span>To add an image, use: <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs">&lt;img src="https://your-image-url.com/image.jpg" alt="description" /&gt;</code></span>
+                    </div>
+                    <Textarea
+                      value={editingBody}
+                      onChange={(e) => setEditingBody(e.target.value)}
+                      placeholder="Enter your HTML content here..."
+                      className="font-mono text-sm min-h-[350px] resize-y"
+                    />
+                  </div>
                 </TabsContent>
                 <TabsContent value="preview">
                   <EmailPreview

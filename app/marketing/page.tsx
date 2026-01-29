@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2 } from 'lucide-react';
+import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2, Code, Image } from 'lucide-react';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
 import { supabase } from '@/lib/supabase';
@@ -559,34 +559,36 @@ export default function MarketingPage() {
       </div>
 
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Email Template</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="template-name">Template Name</Label>
-              <Input
-                id="template-name"
-                placeholder="e.g., Spring Course Promotion"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="template-category">Category</Label>
-              <Select value={templateCategory} onValueChange={setTemplateCategory}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">General</SelectItem>
-                  <SelectItem value="course_promotion">Course Promotion</SelectItem>
-                  <SelectItem value="newsletter">Newsletter</SelectItem>
-                  <SelectItem value="announcement">Announcement</SelectItem>
-                  <SelectItem value="special_offer">Special Offer</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="flex-1 overflow-auto space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="template-name">Template Name</Label>
+                <Input
+                  id="template-name"
+                  placeholder="e.g., Spring Course Promotion"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="template-category">Category</Label>
+                <Select value={templateCategory} onValueChange={setTemplateCategory}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="course_promotion">Course Promotion</SelectItem>
+                    <SelectItem value="newsletter">Newsletter</SelectItem>
+                    <SelectItem value="announcement">Announcement</SelectItem>
+                    <SelectItem value="special_offer">Special Offer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
               <Label htmlFor="template-subject">Email Subject</Label>
@@ -598,18 +600,48 @@ export default function MarketingPage() {
               />
             </div>
             <div>
-              <Label htmlFor="template-body">Email Body</Label>
-              <div className="mt-1">
-                <RichTextEditor
-                  value={templateBody}
-                  onChange={setTemplateBody}
-                  placeholder="Write your email content here..."
-                  minHeight="250px"
-                />
-              </div>
+              <Label>Email Body</Label>
+              <Tabs defaultValue="editor" className="w-full mt-1">
+                <TabsList className="mb-2">
+                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  <TabsTrigger value="html" className="gap-1">
+                    <Code className="h-3.5 w-3.5" />
+                    HTML
+                  </TabsTrigger>
+                  <TabsTrigger value="preview">Preview</TabsTrigger>
+                </TabsList>
+                <TabsContent value="editor">
+                  <RichTextEditor
+                    value={templateBody}
+                    onChange={setTemplateBody}
+                    placeholder="Write your email content here..."
+                    minHeight="250px"
+                  />
+                </TabsContent>
+                <TabsContent value="html">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border">
+                      <Image className="h-4 w-4" />
+                      <span>To add an image, use: <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs">&lt;img src="https://your-image-url.com/image.jpg" alt="description" /&gt;</code></span>
+                    </div>
+                    <Textarea
+                      value={templateBody}
+                      onChange={(e) => setTemplateBody(e.target.value)}
+                      placeholder="Enter your HTML content here..."
+                      className="font-mono text-sm min-h-[300px] resize-y"
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="preview">
+                  <EmailPreview
+                    subject={templateSubject}
+                    body={templateBody}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
               setTemplateDialogOpen(false);
               resetTemplateForm();
@@ -814,6 +846,10 @@ export default function MarketingPage() {
               <Tabs defaultValue="editor" className="w-full mt-1">
                 <TabsList className="mb-2">
                   <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  <TabsTrigger value="html" className="gap-1">
+                    <Code className="h-3.5 w-3.5" />
+                    HTML
+                  </TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                 </TabsList>
                 <TabsContent value="editor">
@@ -823,6 +859,20 @@ export default function MarketingPage() {
                     placeholder="Write your email content here..."
                     minHeight="300px"
                   />
+                </TabsContent>
+                <TabsContent value="html">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 p-3 rounded-lg border">
+                      <Image className="h-4 w-4" />
+                      <span>To add an image, use: <code className="bg-slate-200 px-1.5 py-0.5 rounded text-xs">&lt;img src="https://your-image-url.com/image.jpg" alt="description" /&gt;</code></span>
+                    </div>
+                    <Textarea
+                      value={templateBody}
+                      onChange={(e) => setTemplateBody(e.target.value)}
+                      placeholder="Enter your HTML content here..."
+                      className="font-mono text-sm min-h-[350px] resize-y"
+                    />
+                  </div>
                 </TabsContent>
                 <TabsContent value="preview">
                   <EmailPreview
