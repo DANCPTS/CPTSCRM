@@ -46,6 +46,15 @@ export default function BookingFormDetailPage() {
   const [delegateCourseMap, setDelegateCourseMap] = useState<Record<string, string[]>>({});
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
+  const formatDOB = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   useEffect(() => {
     loadBookingForm();
 
@@ -428,7 +437,7 @@ export default function BookingFormDetailPage() {
             doc.setTextColor(100, 116, 139);
             doc.text('DOB: ', margin, y);
             doc.setTextColor(30, 41, 59);
-            doc.text(delegate.date_of_birth, margin + 11, y);
+            doc.text(formatDOB(delegate.date_of_birth), margin + 11, y);
             y += 5;
           }
           if (delegate.national_insurance) {
@@ -837,7 +846,7 @@ export default function BookingFormDetailPage() {
                           {delegate.date_of_birth && (
                             <div>
                               <div className="text-sm text-slate-500">Date of Birth</div>
-                              <p className="font-medium text-slate-900">{delegate.date_of_birth}</p>
+                              <p className="font-medium text-slate-900">{formatDOB(delegate.date_of_birth)}</p>
                             </div>
                           )}
                           {delegate.national_insurance && (
@@ -884,7 +893,7 @@ export default function BookingFormDetailPage() {
                           {delegate.date_of_birth && (
                             <div>
                               <div className="text-sm text-slate-500">Date of Birth</div>
-                              <p className="font-medium text-slate-900">{delegate.date_of_birth}</p>
+                              <p className="font-medium text-slate-900">{formatDOB(delegate.date_of_birth)}</p>
                             </div>
                           )}
                           {delegate.national_insurance && (
