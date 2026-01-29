@@ -38,30 +38,32 @@ function StatCard({ label, value, percentage, icon: Icon, color, subLabel }: {
   const colors = colorClasses[color] || colorClasses.slate;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className={`p-1.5 rounded-md ${colors.bg}`}>
-            <Icon className={`h-4 w-4 ${colors.text}`} />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-slate-600">{label}</div>
-            {subLabel && <div className="text-xs text-slate-400">{subLabel}</div>}
-          </div>
+    <div className="bg-white border border-slate-200 rounded-lg p-5 hover:border-slate-300 transition-colors">
+      <div className="flex items-center gap-2 mb-4">
+        <div className={`p-2 rounded-lg ${colors.bg}`}>
+          <Icon className={`h-4 w-4 ${colors.text}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-slate-600 leading-tight">{label}</div>
+          {subLabel && <div className="text-xs text-slate-400 leading-tight">{subLabel}</div>}
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="flex items-baseline gap-2">
+          <div className="text-3xl font-bold text-slate-900">{value}</div>
+          {percentage !== undefined && (
+            <div className={`text-base font-semibold ${colors.text}`}>{percentage.toFixed(2)}%</div>
+          )}
         </div>
         {percentage !== undefined && (
-          <div className={`text-lg font-bold ${colors.text}`}>{percentage.toFixed(2)}%</div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${colors.bar} transition-all duration-500 ease-out`}
+              style={{ width: `${Math.min(percentage, 100)}%` }}
+            />
+          </div>
         )}
       </div>
-      <div className="text-3xl font-bold text-slate-900 mb-2">{value}</div>
-      {percentage !== undefined && (
-        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${colors.bar} transition-all duration-500`}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
-          />
-        </div>
-      )}
     </div>
   );
 }
