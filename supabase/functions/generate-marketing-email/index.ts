@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt } = await req.json();
+    const { prompt, existingSubject, existingBody } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -38,7 +38,31 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+    const isModification = existingSubject || existingBody;
+
+    const systemPrompt = isModification
+      ? `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+
+You have been given an existing marketing email to modify based on the user's instructions.
+
+EXISTING EMAIL:
+Subject: ${existingSubject || '(no subject)'}
+Body: ${existingBody || '(no body)'}
+
+Your task is to modify this email according to the user's instructions while:
+- Maintaining a professional and engaging tone
+- Keeping the email focused on CPCS training benefits
+- Preserving any important information unless asked to remove it
+- Using proper grammar and professional tone
+
+Return ONLY a JSON object with this exact format:
+{
+  "subject": "Your modified subject line here",
+  "body": "Your modified email body here"
+}
+
+Do not include any other text outside the JSON object.`
+      : `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
 
 Your task is to create compelling marketing emails that:
 - Are professional and engaging

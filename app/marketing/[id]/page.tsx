@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -36,6 +36,8 @@ export default function CampaignDetailPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingExcel, setUploadingExcel] = useState(false);
   const [excelRecipients, setExcelRecipients] = useState<{email: string; name: string; company_name?: string}[]>([]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [generatingAi, setGeneratingAi] = useState(false);
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -404,6 +406,48 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleAiModify = async () => {
+    if (!aiPrompt.trim()) {
+      toast.error('Please enter instructions for the AI');
+      return;
+    }
+
+    setGeneratingAi(true);
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-marketing-email`;
+      const headers = {
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          existingSubject: editingSubject,
+          existingBody: editingBody,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setEditingSubject(result.subject);
+        setEditingBody(result.body);
+        setAiPrompt('');
+        toast.success('Email updated by AI');
+      } else {
+        toast.error('Failed to modify email: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Failed to modify email with AI:', error);
+      toast.error('Failed to modify email. Check console for details.');
+    } finally {
+      setGeneratingAi(false);
+    }
+  };
+
   if (loading) {
     return (
       <AppShell>
@@ -732,6 +776,44 @@ export default function CampaignDetailPage() {
             <DialogTitle>Edit Email Template</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto space-y-4">
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+              <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Modify with AI
+              </label>
+              <p className="text-xs text-blue-700 mb-3">
+                Describe how you want to change the email (e.g., "make it more formal", "add a discount offer", "shorten the text")
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !generatingAi && handleAiModify()}
+                  placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
+                  className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                  disabled={generatingAi}
+                />
+                <Button
+                  onClick={handleAiModify}
+                  disabled={generatingAi || !aiPrompt.trim()}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {generatingAi ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Apply
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Subject</label>
               <input
