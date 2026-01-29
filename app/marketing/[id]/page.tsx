@@ -38,24 +38,24 @@ function StatCard({ label, value, percentage, icon: Icon, color, subLabel }: {
   const colors = colorClasses[color] || colorClasses.slate;
 
   return (
-    <div className="bg-white border rounded-xl p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-lg ${colors.bg}`}>
-          <Icon className={`h-4 w-4 ${colors.text}`} />
+    <div className="bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-300 transition-colors">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-md ${colors.bg}`}>
+            <Icon className={`h-4 w-4 ${colors.text}`} />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-slate-600">{label}</div>
+            {subLabel && <div className="text-xs text-slate-400">{subLabel}</div>}
+          </div>
         </div>
-        <div className="flex-1">
-          <div className="text-sm text-slate-500">{label}</div>
-          {subLabel && <div className="text-xs text-slate-400">{subLabel}</div>}
-        </div>
-        <div className="text-right">
-          <div className="text-xl font-bold text-slate-900">{value}</div>
-          {percentage !== undefined && (
-            <div className={`text-sm font-medium ${colors.text}`}>{percentage.toFixed(2)}%</div>
-          )}
-        </div>
+        {percentage !== undefined && (
+          <div className={`text-lg font-bold ${colors.text}`}>{percentage.toFixed(2)}%</div>
+        )}
       </div>
+      <div className="text-3xl font-bold text-slate-900 mb-2">{value}</div>
       {percentage !== undefined && (
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
           <div
             className={`h-full ${colors.bar} transition-all duration-500`}
             style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -100,35 +100,35 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
   const [activeTab, setActiveTab] = useState('summary');
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <Card className="shadow-sm">
+      <CardHeader className="pb-4 border-b border-slate-100">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-2xl">
+            <BarChart3 className="h-6 w-6 text-slate-700" />
             Campaign Report
           </CardTitle>
           {campaign.sent_at && (
-            <Badge variant="outline" className="text-slate-500">
+            <Badge variant="outline" className="text-slate-600 font-normal px-3 py-1">
               Sent {format(new Date(campaign.sent_at), 'PPp')}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-4 w-full justify-start">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="recipients">Recipients Activity</TabsTrigger>
-            <TabsTrigger value="links">Link Activity</TabsTrigger>
+          <TabsList className="w-full justify-start bg-slate-50 p-1">
+            <TabsTrigger value="summary" className="data-[state=active]:bg-white">Summary</TabsTrigger>
+            <TabsTrigger value="recipients" className="data-[state=active]:bg-white">Recipients Activity</TabsTrigger>
+            <TabsTrigger value="links" className="data-[state=active]:bg-white">Link Activity</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="summary" className="space-y-4">
-            <div className="bg-slate-50 rounded-xl p-4 mb-4">
-              <div className="text-sm text-slate-500 mb-1">Total Emails Sent</div>
-              <div className="text-4xl font-bold text-slate-900">{sentCount}</div>
+          <TabsContent value="summary" className="space-y-5 mt-6">
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center">
+              <div className="text-sm font-medium text-slate-500 mb-2">Total Emails Sent</div>
+              <div className="text-5xl font-bold text-slate-900">{sentCount}</div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <StatCard
                 label="Opened"
                 value={openedCount}
@@ -153,7 +153,7 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
               />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Unsubscribed"
                 value={unsubscribedCount}
@@ -185,58 +185,69 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
             </div>
           </TabsContent>
 
-          <TabsContent value="recipients" className="space-y-3">
-            <div className="flex items-center gap-4 text-sm text-slate-500 mb-2">
-              <span className="flex items-center gap-1"><Users className="h-4 w-4" /> {recipients.length} total</span>
-              <span className="flex items-center gap-1 text-green-600"><Eye className="h-4 w-4" /> {openedCount} opened</span>
-              <span className="flex items-center gap-1 text-blue-600"><MousePointer className="h-4 w-4" /> {clickedCount} clicked</span>
+          <TabsContent value="recipients" className="space-y-3 mt-6">
+            <div className="flex items-center gap-4 text-sm bg-slate-50 rounded-lg p-3 mb-4">
+              <span className="flex items-center gap-1.5 text-slate-600">
+                <Users className="h-4 w-4" />
+                <span className="font-medium">{recipients.length}</span> total
+              </span>
+              <span className="flex items-center gap-1.5 text-green-600">
+                <Eye className="h-4 w-4" />
+                <span className="font-medium">{openedCount}</span> opened
+              </span>
+              <span className="flex items-center gap-1.5 text-blue-600">
+                <MousePointer className="h-4 w-4" />
+                <span className="font-medium">{clickedCount}</span> clicked
+              </span>
             </div>
-            <div className="max-h-[400px] overflow-y-auto space-y-2">
+            <div className="max-h-[500px] overflow-y-auto space-y-2 pr-2">
               {recipients.map((recipient) => (
                 <div
                   key={recipient.id}
-                  className="flex items-center justify-between p-3 border rounded-lg bg-white"
+                  className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-white hover:border-slate-300 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <User className="h-4 w-4 text-slate-400" />
-                    <div>
-                      <p className="font-medium text-sm">{recipient.name}</p>
-                      <p className="text-xs text-slate-500">{recipient.email}</p>
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <User className="h-4 w-4 text-slate-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm text-slate-900 truncate">{recipient.name}</p>
+                      <p className="text-xs text-slate-500 truncate">{recipient.email}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap justify-end ml-4">
                     {recipient.sent && (
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs whitespace-nowrap">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Sent
                       </Badge>
                     )}
                     {recipient.opened_at && (
-                      <Badge className="bg-green-100 text-green-700 text-xs">
+                      <Badge className="bg-green-100 text-green-700 text-xs whitespace-nowrap">
                         <Eye className="h-3 w-3 mr-1" />
                         Opened {recipient.open_count > 1 ? `(${recipient.open_count}x)` : ''}
                       </Badge>
                     )}
                     {recipient.clicked_at && (
-                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                      <Badge className="bg-blue-100 text-blue-700 text-xs whitespace-nowrap">
                         <MousePointer className="h-3 w-3 mr-1" />
                         Clicked {recipient.click_count > 1 ? `(${recipient.click_count}x)` : ''}
                       </Badge>
                     )}
                     {recipient.unsubscribed_at && (
-                      <Badge className="bg-slate-100 text-slate-700 text-xs">
+                      <Badge className="bg-slate-100 text-slate-700 text-xs whitespace-nowrap">
                         <Ban className="h-3 w-3 mr-1" />
                         Unsubscribed
                       </Badge>
                     )}
                     {recipient.bounce_type && (
-                      <Badge className={recipient.bounce_type === 'hard' ? 'bg-red-100 text-red-700 text-xs' : 'bg-yellow-100 text-yellow-700 text-xs'}>
+                      <Badge className={recipient.bounce_type === 'hard' ? 'bg-red-100 text-red-700 text-xs' : 'bg-yellow-100 text-yellow-700 text-xs whitespace-nowrap'}>
                         <AlertTriangle className="h-3 w-3 mr-1" />
                         {recipient.bounce_type === 'hard' ? 'Hard Bounce' : 'Soft Bounce'}
                       </Badge>
                     )}
                     {recipient.spam_reported_at && (
-                      <Badge className="bg-red-100 text-red-700 text-xs">
+                      <Badge className="bg-red-100 text-red-700 text-xs whitespace-nowrap">
                         <Flag className="h-3 w-3 mr-1" />
                         Spam
                       </Badge>
@@ -247,24 +258,30 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
             </div>
           </TabsContent>
 
-          <TabsContent value="links" className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
-              <Link2 className="h-4 w-4" />
-              <span>{linkClicks.length} total clicks on {sortedLinks.length} unique links</span>
+          <TabsContent value="links" className="space-y-3 mt-6">
+            <div className="flex items-center gap-2 text-sm bg-slate-50 rounded-lg p-3 mb-4">
+              <Link2 className="h-4 w-4 text-slate-600" />
+              <span className="text-slate-600">
+                <span className="font-medium">{linkClicks.length}</span> total clicks on{' '}
+                <span className="font-medium">{sortedLinks.length}</span> unique links
+              </span>
             </div>
             {sortedLinks.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                <MousePointer className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No link clicks recorded yet</p>
+              <div className="text-center py-12 text-slate-400">
+                <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-3">
+                  <MousePointer className="h-8 w-8" />
+                </div>
+                <p className="font-medium">No link clicks recorded yet</p>
+                <p className="text-sm mt-1">Link tracking will appear here once recipients click links in your emails</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
                 {sortedLinks.map(([url, count], index) => (
                   <div
                     key={url}
-                    className="flex items-center gap-3 p-3 border rounded-lg bg-white"
+                    className="flex items-center gap-3 p-4 border border-slate-200 rounded-lg bg-white hover:border-slate-300 transition-colors"
                   >
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-medium text-sm">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-semibold text-sm flex-shrink-0">
                       {index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -272,17 +289,16 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1 truncate"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1.5 group"
                       >
-                        {url.length > 60 ? url.substring(0, 60) + '...' : url}
-                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{url.length > 70 ? url.substring(0, 70) + '...' : url}</span>
+                        <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-50 group-hover:opacity-100" />
                       </a>
+                      <div className="text-xs text-slate-400 mt-0.5">Click to visit</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="font-mono">
-                        {count as number} clicks
-                      </Badge>
-                    </div>
+                    <Badge variant="outline" className="font-semibold text-slate-700 whitespace-nowrap">
+                      {count as number} {(count as number) === 1 ? 'click' : 'clicks'}
+                    </Badge>
                   </div>
                 ))}
               </div>
