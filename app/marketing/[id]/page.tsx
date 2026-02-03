@@ -848,6 +848,12 @@ export default function CampaignDetailPage() {
                 {sending ? 'Sending...' : 'Send Campaign'}
               </Button>
             )}
+            {campaign.status === 'sending' && (
+              <Button onClick={handleSendCampaign} disabled={sending}>
+                <Send className="mr-2 h-4 w-4" />
+                {sending ? 'Sending...' : 'Resume Sending'}
+              </Button>
+            )}
           </div>
         </div>
 
