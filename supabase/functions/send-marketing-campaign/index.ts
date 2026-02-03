@@ -182,21 +182,44 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const BATCH_SIZE = 50;
+
     const { data: recipients, error: recipientsError } = await supabase
       .from("campaign_recipients")
       .select("*")
       .eq("campaign_id", campaignId)
-      .eq("sent", false);
+      .eq("sent", false)
+      .limit(BATCH_SIZE);
 
-    if (recipientsError || !recipients || recipients.length === 0) {
+    if (recipientsError) {
       return new Response(
-        JSON.stringify({ success: false, error: "No recipients to send to" }),
+        JSON.stringify({ success: false, error: "Error fetching recipients" }),
         {
-          status: 400,
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
+
+    if (!recipients || recipients.length === 0) {
+      await supabase
+        .from("marketing_campaigns")
+        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .eq("id", campaignId);
+
+      return new Response(
+        JSON.stringify({ success: true, sentCount: 0, complete: true, message: "All emails sent" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const { count: remainingCount } = await supabase
+      .from("campaign_recipients")
+      .select("*", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("sent", false);
 
     await supabase
       .from("marketing_campaigns")
@@ -283,19 +306,25 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await supabase
-      .from("marketing_campaigns")
-      .update({
-        status: sentCount > 0 ? "sent" : "failed",
-        sent_at: new Date().toISOString(),
-      })
-      .eq("id", campaignId);
+    const remainingAfterBatch = (remainingCount || 0) - sentCount;
+    const complete = remainingAfterBatch <= 0;
+
+    if (complete) {
+      await supabase
+        .from("marketing_campaigns")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", campaignId);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         sentCount,
-        totalRecipients: recipients.length,
+        remaining: remainingAfterBatch,
+        complete,
         errors: errors.length > 0 ? errors : undefined,
       }),
       {

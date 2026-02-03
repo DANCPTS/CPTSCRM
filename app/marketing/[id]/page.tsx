@@ -664,6 +664,9 @@ export default function CampaignDetailPage() {
     }
 
     setSending(true);
+    let totalSent = 0;
+    let hasError = false;
+
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-marketing-campaign`;
       const headers = {
@@ -671,20 +674,36 @@ export default function CampaignDetailPage() {
         'Content-Type': 'application/json',
       };
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ campaignId }),
-      });
+      while (!hasError) {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ campaignId }),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      if (response.ok && result.success) {
-        toast.success(`Campaign sent successfully to ${result.sentCount} recipients`);
-        loadCampaignData();
-      } else {
-        toast.error('Failed to send campaign: ' + (result.error || 'Unknown error'));
+        if (!response.ok || !result.success) {
+          toast.error('Failed to send campaign: ' + (result.error || 'Unknown error'));
+          hasError = true;
+          break;
+        }
+
+        totalSent += result.sentCount;
+
+        if (result.remaining > 0) {
+          toast.info(`Sending... ${totalSent} sent, ${result.remaining} remaining`);
+        }
+
+        if (result.complete) {
+          toast.success(`Campaign completed! Sent to ${totalSent} recipients`);
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+
+      loadCampaignData();
     } catch (error: any) {
       console.error('Failed to send campaign:', error);
       toast.error('Failed to send campaign. Check console for details.');
