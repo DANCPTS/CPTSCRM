@@ -518,13 +518,27 @@ export default function CampaignDetailPage() {
 
       setCampaign(campaignData);
 
-      const { data: recipientsData, error: recipientsError } = await supabase
+      const { count: totalCount } = await supabase
         .from('campaign_recipients')
-        .select('*')
+        .select('*', { count: 'exact', head: true })
         .eq('campaign_id', campaignId);
 
-      if (recipientsError) throw recipientsError;
-      setRecipients(recipientsData || []);
+      const allRecipients: any[] = [];
+      const PAGE_SIZE = 1000;
+      const totalPages = Math.ceil((totalCount || 0) / PAGE_SIZE);
+
+      for (let page = 0; page < totalPages; page++) {
+        const { data: recipientsData, error: recipientsError } = await supabase
+          .from('campaign_recipients')
+          .select('*')
+          .eq('campaign_id', campaignId)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (recipientsError) throw recipientsError;
+        if (recipientsData) allRecipients.push(...recipientsData);
+      }
+
+      setRecipients(allRecipients);
 
       const { data: linkClicksData } = await supabase
         .from('email_link_clicks')
