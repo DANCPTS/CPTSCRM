@@ -42,6 +42,8 @@ export default function MarketingPage() {
   // AI assistance
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiRefinePrompt, setAiRefinePrompt] = useState('');
+  const [aiRefining, setAiRefining] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
@@ -227,11 +229,54 @@ export default function MarketingPage() {
     }
   };
 
+  const handleRefineWithAI = async () => {
+    if (!aiRefinePrompt.trim()) {
+      toast.error('Please enter instructions for the AI');
+      return;
+    }
+
+    setAiRefining(true);
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-marketing-email`;
+      const headers = {
+        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: aiRefinePrompt,
+          existingSubject: templateSubject,
+          existingBody: templateBody,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setTemplateSubject(result.subject);
+        setTemplateBody(result.body);
+        setAiRefinePrompt('');
+        toast.success('Email updated by AI');
+      } else {
+        toast.error('Failed to refine email: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Failed to refine email with AI:', error);
+      toast.error('Failed to refine email. Check console for details.');
+    } finally {
+      setAiRefining(false);
+    }
+  };
+
   const resetTemplateForm = () => {
     setTemplateName('');
     setTemplateSubject('');
     setTemplateBody('');
     setTemplateCategory('general');
+    setAiRefinePrompt('');
   };
 
   const resetCampaignForm = () => {
@@ -640,6 +685,48 @@ export default function MarketingPage() {
                 onChange={(e) => setTemplateSubject(e.target.value)}
               />
             </div>
+
+            {(templateSubject || templateBody) && (
+              <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+                <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Refine with AI
+                </label>
+                <p className="text-xs text-blue-700 mb-3">
+                  Describe how you want to change the email (e.g., "make it shorter", "add urgency", "include a discount")
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={aiRefinePrompt}
+                    onChange={(e) => setAiRefinePrompt(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
+                    placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
+                    className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                    disabled={aiRefining}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleRefineWithAI}
+                    disabled={aiRefining || !aiRefinePrompt.trim()}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {aiRefining ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Refining...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Apply
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div>
               <Label>Email Body</Label>
               <Tabs defaultValue="editor" className="w-full mt-1">
@@ -903,6 +990,46 @@ export default function MarketingPage() {
                 onChange={(e) => setTemplateSubject(e.target.value)}
               />
             </div>
+
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+              <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Refine with AI
+              </label>
+              <p className="text-xs text-blue-700 mb-3">
+                Describe how you want to change the email (e.g., "make it shorter", "add urgency", "include a discount")
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={aiRefinePrompt}
+                  onChange={(e) => setAiRefinePrompt(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
+                  placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
+                  className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                  disabled={aiRefining}
+                />
+                <Button
+                  type="button"
+                  onClick={handleRefineWithAI}
+                  disabled={aiRefining || !aiRefinePrompt.trim()}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {aiRefining ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Refining...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Apply
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
             <div>
               <Label>Email Body</Label>
               <Tabs defaultValue="editor" className="w-full mt-1">
