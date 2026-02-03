@@ -286,11 +286,15 @@ export default function MarketingPage() {
         source: 'csv_upload',
       }));
 
-      const { error: recipientsError } = await supabase
-        .from('campaign_recipients')
-        .insert(recipientsToInsert);
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < recipientsToInsert.length; i += BATCH_SIZE) {
+        const batch = recipientsToInsert.slice(i, i + BATCH_SIZE);
+        const { error: recipientsError } = await supabase
+          .from('campaign_recipients')
+          .insert(batch);
 
-      if (recipientsError) throw recipientsError;
+        if (recipientsError) throw recipientsError;
+      }
 
       toast.success(`Campaign created with ${csvRecipients.length} recipients`);
       setCampaignDialogOpen(false);
