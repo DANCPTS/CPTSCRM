@@ -625,6 +625,20 @@ export default function MarketingPage() {
                           </div>
                         </div>
                         <div className="flex gap-1 ml-2">
+                          {campaign.status === 'sending' && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/marketing/${campaign.id}`);
+                              }}
+                              title="Resume sending"
+                            >
+                              <Send className="h-4 w-4 mr-1" />
+                              Resume
+                            </Button>
+                          )}
                           {campaign.status === 'sent' && (
                             <Button
                               variant="ghost"
