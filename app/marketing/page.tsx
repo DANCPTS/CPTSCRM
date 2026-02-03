@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2, Code, Image, Upload, Loader2 } from 'lucide-react';
+import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
 import { supabase } from '@/lib/supabase';
@@ -36,8 +37,10 @@ export default function MarketingPage() {
 
   // Campaign form
   const [campaignName, setCampaignName] = useState('');
-  const [targetType, setTargetType] = useState<'business' | 'individual'>('business');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [csvRecipients, setCsvRecipients] = useState<{email: string; name: string; company_name?: string}[]>([]);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
 
   // AI assistance
   const [aiPrompt, setAiPrompt] = useState('');
@@ -156,12 +159,106 @@ export default function MarketingPage() {
     }
   };
 
-  const handleCreateCampaign = async () => {
-    if (!campaignName || !selectedTemplateId) {
-      toast.error('Please fill in all campaign fields');
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+
+    if (!validExtensions.includes(fileExt)) {
+      toast.error('Please select an Excel (.xlsx, .xls) or CSV file');
       return;
     }
 
+    setUploadingCsv(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { header: 1 });
+
+      if (jsonData.length < 2) {
+        toast.error('File must have a header row and at least one data row');
+        return;
+      }
+
+      const headerRow = (jsonData[0] as any[]).map((h: any) => String(h || '').trim().toLowerCase());
+
+      const emailIndex = headerRow.findIndex(h => h.includes('email'));
+      const nameIndex = headerRow.findIndex(h => h.includes('name') && !h.includes('company') && !h.includes('first') && !h.includes('last'));
+      const firstNameIndex = headerRow.findIndex(h => h === 'first name' || h === 'firstname' || h === 'first_name' || h === 'first');
+      const lastNameIndex = headerRow.findIndex(h => h === 'last name' || h === 'lastname' || h === 'last_name' || h === 'last' || h === 'surname');
+      const companyIndex = headerRow.findIndex(h => h.includes('company') || h.includes('business') || h.includes('organisation') || h.includes('organization'));
+
+      if (emailIndex === -1) {
+        toast.error(`File must have an "Email" column. Found columns: ${headerRow.join(', ')}`);
+        return;
+      }
+
+      const parsed: {email: string; name: string; company_name?: string}[] = [];
+      const existingEmails = new Set(csvRecipients.map(r => r.email.toLowerCase()));
+
+      for (let i = 1; i < jsonData.length; i++) {
+        const row = jsonData[i] as any[];
+        if (!row || row.length === 0) continue;
+
+        const emailValue = row[emailIndex];
+        const email = String(emailValue || '').trim().toLowerCase();
+
+        if (email && email.includes('@') && !existingEmails.has(email)) {
+          let name = '';
+          if (firstNameIndex !== -1 || lastNameIndex !== -1) {
+            const firstName = firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : '';
+            const lastName = lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : '';
+            name = `${firstName} ${lastName}`.trim();
+          } else if (nameIndex !== -1) {
+            name = String(row[nameIndex] || '').trim();
+          }
+
+          const companyName = companyIndex !== -1 ? String(row[companyIndex] || '').trim() : undefined;
+
+          parsed.push({
+            email,
+            name: name || email.split('@')[0],
+            company_name: companyName || undefined,
+          });
+          existingEmails.add(email);
+        }
+      }
+
+      if (parsed.length === 0) {
+        toast.error('No valid new email addresses found in the file');
+        return;
+      }
+
+      setCsvRecipients(prev => [...prev, ...parsed]);
+      toast.success(`Found ${parsed.length} valid contacts`);
+    } catch (error: any) {
+      toast.error('Failed to parse file: ' + error.message);
+    } finally {
+      setUploadingCsv(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveCsvRecipient = (email: string) => {
+    setCsvRecipients(prev => prev.filter(r => r.email !== email));
+  };
+
+  const handleCreateCampaign = async () => {
+    if (!campaignName || !selectedTemplateId) {
+      toast.error('Please fill in campaign name and select a template');
+      return;
+    }
+
+    if (csvRecipients.length === 0) {
+      toast.error('Please upload a CSV file with recipients');
+      return;
+    }
+
+    setCreatingCampaign(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -170,23 +267,40 @@ export default function MarketingPage() {
         .from('marketing_campaigns')
         .insert({
           name: campaignName,
-          target_type: targetType,
+          target_type: 'business',
           template_id: selectedTemplateId,
           status: 'draft',
           created_by: user.id,
+          recipients_count: csvRecipients.length,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      toast.success('Campaign created successfully');
+      const recipientsToInsert = csvRecipients.map(r => ({
+        campaign_id: campaign.id,
+        email: r.email,
+        name: r.name,
+        company_name: r.company_name || null,
+        source: 'csv_upload',
+      }));
+
+      const { error: recipientsError } = await supabase
+        .from('campaign_recipients')
+        .insert(recipientsToInsert);
+
+      if (recipientsError) throw recipientsError;
+
+      toast.success(`Campaign created with ${csvRecipients.length} recipients`);
       setCampaignDialogOpen(false);
       resetCampaignForm();
-      loadData();
+      router.push(`/marketing/${campaign.id}`);
     } catch (error: any) {
       toast.error('Failed to create campaign');
       console.error(error);
+    } finally {
+      setCreatingCampaign(false);
     }
   };
 
@@ -281,8 +395,8 @@ export default function MarketingPage() {
 
   const resetCampaignForm = () => {
     setCampaignName('');
-    setTargetType('business');
     setSelectedTemplateId('');
+    setCsvRecipients([]);
   };
 
   const handlePreviewTemplate = (template: any) => {
@@ -805,11 +919,11 @@ export default function MarketingPage() {
       </Dialog>
 
       <Dialog open={campaignDialogOpen} onOpenChange={setCampaignDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Marketing Campaign</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="flex-1 overflow-auto space-y-4">
             <div>
               <Label htmlFor="campaign-name">Campaign Name</Label>
               <Input
@@ -818,28 +932,6 @@ export default function MarketingPage() {
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
               />
-            </div>
-            <div>
-              <Label htmlFor="target-type">Target Audience</Label>
-              <Select value={targetType} onValueChange={(val: any) => setTargetType(val)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="business">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      Businesses
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="individual">
-                    <div className="flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Individual Clients
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div>
               <Label htmlFor="template-select">Email Template</Label>
@@ -856,16 +948,100 @@ export default function MarketingPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Recipients (CSV/Excel)
+                </Label>
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleCsvUpload}
+                    className="hidden"
+                    disabled={uploadingCsv}
+                  />
+                  <Button type="button" variant="outline" size="sm" disabled={uploadingCsv} asChild>
+                    <span>
+                      {uploadingCsv ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-1.5" />
+                      )}
+                      {uploadingCsv ? 'Processing...' : 'Upload File'}
+                    </span>
+                  </Button>
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 mb-3">
+                Upload a CSV or Excel file with columns: <strong>Email</strong> (required), <strong>Name</strong> or <strong>First Name/Last Name</strong>, and optionally <strong>Company</strong>.
+              </p>
+
+              {csvRecipients.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-green-700">{csvRecipients.length} recipients ready</p>
+                    <Button variant="ghost" size="sm" onClick={() => setCsvRecipients([])}>
+                      <X className="h-4 w-4 mr-1" />
+                      Clear All
+                    </Button>
+                  </div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2 bg-slate-50">
+                    {csvRecipients.slice(0, 50).map((recipient) => (
+                      <div
+                        key={recipient.email}
+                        className="flex items-center justify-between p-2 bg-white rounded border text-sm"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <User className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{recipient.name}</p>
+                            <p className="text-xs text-slate-500 truncate">{recipient.email}</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex-shrink-0"
+                          onClick={() => handleRemoveCsvRecipient(recipient.email)}
+                        >
+                          <X className="h-4 w-4 text-slate-400" />
+                        </Button>
+                      </div>
+                    ))}
+                    {csvRecipients.length > 50 && (
+                      <p className="text-xs text-center text-slate-500 py-2">
+                        ... and {csvRecipients.length - 50} more
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center">
+                  <FileSpreadsheet className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500">No recipients uploaded yet</p>
+                  <p className="text-xs text-slate-400">Upload a CSV or Excel file to add recipients</p>
+                </div>
+              )}
+            </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
               setCampaignDialogOpen(false);
               resetCampaignForm();
             }}>
               Cancel
             </Button>
-            <Button onClick={handleCreateCampaign}>
-              Create Campaign
+            <Button onClick={handleCreateCampaign} disabled={creatingCampaign || csvRecipients.length === 0}>
+              {creatingCampaign ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                `Create Campaign${csvRecipients.length > 0 ? ` (${csvRecipients.length})` : ''}`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
