@@ -464,13 +464,46 @@ export default function LeadsPage() {
     }
   };
 
-  const previewBookingFormAsCustomer = (lead: any, e: React.MouseEvent) => {
+  const previewBookingFormAsCustomer = async (lead: any, e: React.MouseEvent) => {
     e.stopPropagation();
     const form = bookingForms[lead.id];
-    if (form?.token) {
-      window.open(`/booking-form/${form.token}`, '_blank');
-    } else {
+    if (!form?.token) {
       toast.error('No booking form found for this lead');
+      return;
+    }
+
+    try {
+      const { data: proposalCourses } = await supabase
+        .from('proposal_courses')
+        .select('*')
+        .eq('lead_id', lead.id)
+        .order('display_order');
+
+      if (proposalCourses && proposalCourses.length > 0) {
+        await supabase
+          .from('booking_form_courses')
+          .delete()
+          .eq('booking_form_id', form.id);
+
+        const coursesToInsert = proposalCourses.map((course: any, index: number) => ({
+          booking_form_id: form.id,
+          course_name: course.course_name,
+          course_dates: course.dates,
+          course_venue: course.venue,
+          number_of_delegates: course.number_of_delegates,
+          price: course.price,
+          currency: course.currency,
+          display_order: index,
+          vat_exempt: course.vat_exempt || false,
+        }));
+
+        await supabase.from('booking_form_courses').insert(coursesToInsert);
+      }
+
+      window.open(`/booking-form/${form.token}`, '_blank');
+    } catch (error) {
+      console.error('Error syncing courses:', error);
+      window.open(`/booking-form/${form.token}`, '_blank');
     }
   };
 
