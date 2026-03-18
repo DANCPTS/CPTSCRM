@@ -369,6 +369,23 @@ export default function CampaignDetailPage() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [linkClicks, setLinkClicks] = useState<any[]>([]);
   const [activeReportTab, setActiveReportTab] = useState('summary');
+  const [sendProgress, setSendProgress] = useState<{
+    totalSent: number;
+    totalRecipients: number;
+    remaining: number;
+    errors: string[];
+    startedAt: number | null;
+    lastBatchAt: number | null;
+    status: 'idle' | 'sending' | 'complete' | 'error' | 'timeout';
+  }>({
+    totalSent: 0,
+    totalRecipients: 0,
+    remaining: 0,
+    errors: [],
+    startedAt: null,
+    lastBatchAt: null,
+    status: 'idle',
+  });
   const editTemplateActionRef = useRef(false);
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -698,9 +715,21 @@ export default function CampaignDetailPage() {
       return;
     }
 
+    const unsent = recipients.filter(r => !r.sent).length;
     setSending(true);
+    setSendProgress({
+      totalSent: 0,
+      totalRecipients: unsent,
+      remaining: unsent,
+      errors: [],
+      startedAt: Date.now(),
+      lastBatchAt: Date.now(),
+      status: 'sending',
+    });
+
     let totalSent = 0;
     let hasError = false;
+    const collectedErrors: string[] = [];
 
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-marketing-campaign`;
@@ -710,26 +739,64 @@ export default function CampaignDetailPage() {
       };
 
       let noProgressCount = 0;
+      const TIMEOUT_MS = 120000;
 
       while (!hasError) {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ campaignId }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-        const result = await response.json();
-
-        if (!result.success) {
-          toast.error('Failed to send campaign: ' + (result.error || 'Unknown error'));
+        let response: Response;
+        try {
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ campaignId }),
+            signal: controller.signal,
+          });
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          if (fetchErr.name === 'AbortError') {
+            collectedErrors.push('Request timed out after 2 minutes. The server may be overloaded.');
+            setSendProgress(prev => ({ ...prev, status: 'timeout', errors: [...collectedErrors] }));
+          } else {
+            collectedErrors.push(`Network error: ${fetchErr.message}`);
+            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
+          }
           hasError = true;
           break;
+        }
+        clearTimeout(timeoutId);
+
+        let result: any;
+        try {
+          result = await response.json();
+        } catch {
+          collectedErrors.push(`Server returned invalid response (status ${response.status})`);
+          setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
+          hasError = true;
+          break;
+        }
+
+        if (!result.success) {
+          collectedErrors.push(result.error || 'Unknown error');
+          setSendProgress(prev => ({
+            ...prev,
+            status: 'error',
+            errors: [...collectedErrors],
+          }));
+          hasError = true;
+          break;
+        }
+
+        if (result.errors) {
+          collectedErrors.push(...result.errors);
         }
 
         if (result.sentCount === 0 && !result.complete) {
           noProgressCount++;
           if (noProgressCount >= 3) {
-            toast.error('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
+            collectedErrors.push('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
+            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
             hasError = true;
             break;
           }
@@ -738,17 +805,24 @@ export default function CampaignDetailPage() {
         }
 
         totalSent += result.sentCount;
+        const remaining = result.remaining || 0;
 
-        if (result.remaining > 0 && !result.complete) {
-          toast.info(`Sending... ${totalSent} sent, ${result.remaining} remaining`);
-        }
+        setSendProgress(prev => ({
+          ...prev,
+          totalSent,
+          remaining,
+          lastBatchAt: Date.now(),
+          errors: [...collectedErrors],
+        }));
 
         if (result.complete) {
-          if (totalSent > 0) {
-            toast.success(`Campaign completed! Sent to ${totalSent} recipients`);
-          } else {
-            toast.error('Campaign failed - no emails could be sent. Check your SMTP settings.');
-          }
+          setSendProgress(prev => ({
+            ...prev,
+            totalSent,
+            remaining: 0,
+            status: totalSent > 0 ? 'complete' : 'error',
+            errors: totalSent === 0 ? [...collectedErrors, 'No emails could be sent. Check your SMTP settings.'] : [...collectedErrors],
+          }));
           break;
         }
 
@@ -758,7 +832,11 @@ export default function CampaignDetailPage() {
       loadCampaignData();
     } catch (error: any) {
       console.error('Failed to send campaign:', error);
-      toast.error('Failed to send campaign. Check console for details.');
+      setSendProgress(prev => ({
+        ...prev,
+        status: 'error',
+        errors: [...prev.errors, `Unexpected error: ${error.message}`],
+      }));
     } finally {
       setSending(false);
     }
@@ -912,9 +990,114 @@ export default function CampaignDetailPage() {
   const existingEmails = new Set(recipients.map(r => r.email.toLowerCase()));
   const filteredAvailable = availableRecipients.filter(r => !existingEmails.has(r.email.toLowerCase()));
 
+  const progressPercent = sendProgress.totalRecipients > 0
+    ? Math.round((sendProgress.totalSent / sendProgress.totalRecipients) * 100)
+    : 0;
+
+  const elapsedSeconds = sendProgress.startedAt
+    ? Math.floor((Date.now() - sendProgress.startedAt) / 1000)
+    : 0;
+
   return (
     <AppShell>
       <div className="p-8">
+        {sendProgress.status !== 'idle' && (
+          <div className={`mb-6 rounded-lg border-2 overflow-hidden ${
+            sendProgress.status === 'complete' ? 'border-green-300 bg-green-50' :
+            sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'border-red-300 bg-red-50' :
+            'border-blue-300 bg-blue-50'
+          }`}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  {sendProgress.status === 'sending' && (
+                    <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  )}
+                  {sendProgress.status === 'complete' && (
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  )}
+                  {(sendProgress.status === 'error' || sendProgress.status === 'timeout') && (
+                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                  )}
+                  <span className={`font-semibold text-lg ${
+                    sendProgress.status === 'complete' ? 'text-green-800' :
+                    sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-800' :
+                    'text-blue-800'
+                  }`}>
+                    {sendProgress.status === 'sending' && 'Sending Campaign...'}
+                    {sendProgress.status === 'complete' && 'Campaign Sent Successfully'}
+                    {sendProgress.status === 'error' && 'Campaign Failed'}
+                    {sendProgress.status === 'timeout' && 'Request Timed Out'}
+                  </span>
+                </div>
+                {(sendProgress.status === 'complete' || sendProgress.status === 'error' || sendProgress.status === 'timeout') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSendProgress(prev => ({ ...prev, status: 'idle' }))}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 text-sm mb-3">
+                <span className={
+                  sendProgress.status === 'complete' ? 'text-green-700' :
+                  sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-700' :
+                  'text-blue-700'
+                }>
+                  <span className="font-bold text-2xl">{sendProgress.totalSent}</span>
+                  <span className="mx-1">/</span>
+                  <span>{sendProgress.totalRecipients} sent</span>
+                </span>
+                {sendProgress.remaining > 0 && sendProgress.status === 'sending' && (
+                  <span className="text-blue-600">{sendProgress.remaining} remaining</span>
+                )}
+              </div>
+
+              <div className="w-full h-3 bg-white/60 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ease-out ${
+                    sendProgress.status === 'complete' ? 'bg-green-500' :
+                    sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'bg-red-500' :
+                    'bg-blue-500'
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-slate-500">{progressPercent}%</span>
+              </div>
+
+              {sendProgress.errors.length > 0 && (
+                <div className="mt-4 p-3 bg-white/80 rounded-md border border-red-200">
+                  <div className="text-sm font-medium text-red-800 mb-1">Errors ({sendProgress.errors.length})</div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {sendProgress.errors.map((err, i) => (
+                      <div key={i} className="text-xs text-red-600 flex items-start gap-1.5">
+                        <span className="mt-0.5 shrink-0">-</span>
+                        <span>{err}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sendProgress.status === 'timeout' && (
+                <div className="mt-3 text-sm text-red-700">
+                  You can press Resume Sending to continue where it left off. Already-sent emails will not be re-sent.
+                </div>
+              )}
+              {sendProgress.status === 'error' && sendProgress.totalSent > 0 && (
+                <div className="mt-3 text-sm text-red-700">
+                  {sendProgress.totalSent} emails were sent before the error. You can retry to send the remaining {sendProgress.remaining}.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mb-6">
           <Button variant="ghost" onClick={() => router.push('/marketing')} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" />
