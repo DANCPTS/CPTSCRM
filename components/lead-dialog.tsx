@@ -187,6 +187,12 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.assigned_to) {
+      toast.error('Please select a user in the "Assigned To" field');
+      return;
+    }
+
     setLoading(true);
 
     try {
