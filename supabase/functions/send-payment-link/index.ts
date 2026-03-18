@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,61 +18,22 @@ interface EmailSettings {
 }
 
 async function sendEmail(to: string, subject: string, htmlBody: string, settings: EmailSettings): Promise<void> {
-  try {
-    const conn = await Deno.connectTls({
-      hostname: settings.smtp_host,
-      port: settings.smtp_port,
-    });
+  const transporter = nodemailer.createTransport({
+    host: settings.smtp_host,
+    port: settings.smtp_port,
+    secure: settings.smtp_port === 465,
+    auth: {
+      user: settings.smtp_username,
+      pass: settings.smtp_password,
+    },
+  });
 
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    const readBuffer = new Uint8Array(8192);
-
-    async function readResponse(): Promise<string> {
-      const n = await conn.read(readBuffer);
-      if (n === null) return '';
-      return decoder.decode(readBuffer.subarray(0, n));
-    }
-
-    async function sendCommand(cmd: string): Promise<string> {
-      await conn.write(encoder.encode(cmd + '\r\n'));
-      return await readResponse();
-    }
-
-    await readResponse();
-
-    const hostPart = settings.smtp_host.split('.').slice(-2).join('.');
-    await sendCommand(`EHLO ${hostPart}`);
-    await sendCommand('AUTH LOGIN');
-    await sendCommand(btoa(settings.smtp_username));
-    await sendCommand(btoa(settings.smtp_password));
-
-    await sendCommand(`MAIL FROM:<${settings.from_email}>`);
-    await sendCommand(`RCPT TO:<${to}>`);
-    await sendCommand('DATA');
-
-    const emailContent = [
-      `From: ${settings.from_name} <${settings.from_email}>`,
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      `MIME-Version: 1.0`,
-      `Content-Type: text/html; charset=utf-8`,
-      ``,
-      htmlBody,
-      `.`
-    ].join('\r\n');
-
-    await conn.write(encoder.encode(emailContent + '\r\n'));
-    await readResponse();
-
-    await sendCommand('QUIT');
-    conn.close();
-
-    console.log(`Email sent successfully to ${to}`);
-  } catch (error) {
-    console.error('SMTP error:', error);
-    throw new Error(`Failed to send email: ${error.message}`);
-  }
+  await transporter.sendMail({
+    from: `${settings.from_name} <${settings.from_email}>`,
+    to,
+    subject,
+    html: htmlBody,
+  });
 }
 
 function formatCurrency(amount: string | number | null, currency: string = 'GBP'): string {
