@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound, MessageSquare } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -68,14 +68,16 @@ function StatCard({ label, value, percentage, icon: Icon, color, subLabel }: {
   );
 }
 
-function CampaignStatsCard({ campaign, recipients, linkClicks }: {
+function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }: {
   campaign: any;
   recipients: any[];
   linkClicks: any[];
+  onToggleReplied: (recipientId: string, currentlyReplied: boolean) => void;
 }) {
   const sentCount = recipients.filter(r => r.sent).length;
   const openedCount = recipients.filter(r => r.opened_at).length;
   const clickedCount = recipients.filter(r => r.clicked_at).length;
+  const repliedCount = recipients.filter(r => r.replied_at).length;
   const unsubscribedCount = recipients.filter(r => r.unsubscribed_at).length;
   const bouncedHardCount = recipients.filter(r => r.bounce_type === 'hard').length;
   const bouncedSoftCount = recipients.filter(r => r.bounce_type === 'soft').length;
@@ -84,6 +86,7 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
   const openRate = sentCount > 0 ? (openedCount / sentCount) * 100 : 0;
   const clickRate = sentCount > 0 ? (clickedCount / sentCount) * 100 : 0;
   const clickToOpenRate = openedCount > 0 ? (clickedCount / openedCount) * 100 : 0;
+  const replyRate = sentCount > 0 ? (repliedCount / sentCount) * 100 : 0;
   const unsubscribeRate = sentCount > 0 ? (unsubscribedCount / sentCount) * 100 : 0;
   const hardBounceRate = sentCount > 0 ? (bouncedHardCount / sentCount) * 100 : 0;
   const softBounceRate = sentCount > 0 ? (bouncedSoftCount / sentCount) * 100 : 0;
@@ -130,7 +133,7 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
               <div className="text-5xl font-bold text-slate-900">{sentCount}</div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Opened"
                 value={openedCount}
@@ -146,11 +149,18 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
                 color="blue"
               />
               <StatCard
+                label="Replied"
+                value={repliedCount}
+                percentage={replyRate}
+                icon={MessageSquare}
+                color="orange"
+              />
+              <StatCard
                 label="Click to Open"
                 value={clickedCount}
                 percentage={clickToOpenRate}
                 icon={TrendingUp}
-                color="orange"
+                color="slate"
                 subLabel="of openers"
               />
             </div>
@@ -201,6 +211,10 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
                 <MousePointer className="h-4 w-4" />
                 <span className="font-medium">{clickedCount}</span> clicked
               </span>
+              <span className="flex items-center gap-1.5 text-orange-600">
+                <MessageSquare className="h-4 w-4" />
+                <span className="font-medium">{repliedCount}</span> replied
+              </span>
             </div>
             <div className="max-h-[500px] overflow-y-auto space-y-2 pr-2">
               {recipients.map((recipient) => (
@@ -236,6 +250,12 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
                         Clicked {recipient.click_count > 1 ? `(${recipient.click_count}x)` : ''}
                       </Badge>
                     )}
+                    {recipient.replied_at && (
+                      <Badge className="bg-orange-100 text-orange-700 text-xs whitespace-nowrap">
+                        <MessageSquare className="h-3 w-3 mr-1" />
+                        Replied
+                      </Badge>
+                    )}
                     {recipient.unsubscribed_at && (
                       <Badge className="bg-slate-100 text-slate-700 text-xs whitespace-nowrap">
                         <Ban className="h-3 w-3 mr-1" />
@@ -253,6 +273,20 @@ function CampaignStatsCard({ campaign, recipients, linkClicks }: {
                         <Flag className="h-3 w-3 mr-1" />
                         Spam
                       </Badge>
+                    )}
+                    {recipient.sent && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 px-2 text-xs ${recipient.replied_at ? 'text-orange-600 hover:text-orange-700' : 'text-slate-400 hover:text-slate-600'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleReplied(recipient.id, !!recipient.replied_at);
+                        }}
+                      >
+                        <MessageSquare className="h-3 w-3 mr-1" />
+                        {recipient.replied_at ? 'Unmark Reply' : 'Mark Replied'}
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -730,6 +764,27 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleToggleReplied = async (recipientId: string, currentlyReplied: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('campaign_recipients')
+        .update({ replied_at: currentlyReplied ? null : new Date().toISOString() })
+        .eq('id', recipientId);
+
+      if (error) throw error;
+
+      setRecipients(prev => prev.map(r =>
+        r.id === recipientId
+          ? { ...r, replied_at: currentlyReplied ? null : new Date().toISOString() }
+          : r
+      ));
+
+      toast.success(currentlyReplied ? 'Reply unmarked' : 'Marked as replied');
+    } catch (error: any) {
+      toast.error('Failed to update: ' + error.message);
+    }
+  };
+
   const handleOpenEditTemplate = () => {
     if (campaign?.email_templates) {
       setEditingSubject(campaign.email_templates.subject || '');
@@ -955,6 +1010,7 @@ export default function CampaignDetailPage() {
             campaign={campaign}
             recipients={recipients}
             linkClicks={linkClicks}
+            onToggleReplied={handleToggleReplied}
           />
         </div>
 
