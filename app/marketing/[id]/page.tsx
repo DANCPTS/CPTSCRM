@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -549,50 +549,27 @@ export default function CampaignDetailPage() {
 
       setLinkClicks(linkClicksData || []);
 
-      if (campaignData.target_type === 'individual') {
-        const { data: candidatesData, error: candidatesError } = await supabase
-          .from('candidates')
-          .select('first_name, last_name, email')
-          .not('email', 'is', null)
-          .order('created_at', { ascending: false });
+      const [candidatesRes, contactsRes] = await Promise.all([
+        supabase.from('candidates').select('first_name, last_name, email').not('email', 'is', null).order('created_at', { ascending: false }),
+        supabase.from('contacts').select('first_name, last_name, email, companies(name)').not('email', 'is', null).order('created_at', { ascending: false }),
+      ]);
 
-        if (candidatesError) throw candidatesError;
-
-        const uniqueEmails = new Map();
-        (candidatesData || []).forEach((candidate: any) => {
-          if (candidate.email && !uniqueEmails.has(candidate.email.toLowerCase())) {
-            const fullName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim();
-            uniqueEmails.set(candidate.email.toLowerCase(), {
-              email: candidate.email,
-              name: fullName || 'Unknown',
-            });
-          }
-        });
-
-        setAvailableRecipients(Array.from(uniqueEmails.values()));
-      } else {
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contacts')
-          .select('first_name, last_name, email, companies(name)')
-          .not('email', 'is', null)
-          .order('created_at', { ascending: false });
-
-        if (contactsError) throw contactsError;
-
-        const uniqueEmails = new Map();
-        (contactsData || []).forEach((contact: any) => {
-          if (contact.email && !uniqueEmails.has(contact.email.toLowerCase())) {
-            const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
-            uniqueEmails.set(contact.email.toLowerCase(), {
-              email: contact.email,
-              name: fullName || 'Unknown',
-              company_name: contact.companies?.name || null,
-            });
-          }
-        });
-
-        setAvailableRecipients(Array.from(uniqueEmails.values()));
-      }
+      const uniqueEmails = new Map();
+      (candidatesRes.data || []).forEach((c: any) => {
+        if (c.email && !uniqueEmails.has(c.email.toLowerCase())) {
+          uniqueEmails.set(c.email.toLowerCase(), {
+            email: c.email, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown', _source: 'candidate',
+          });
+        }
+      });
+      (contactsRes.data || []).forEach((c: any) => {
+        if (c.email && !uniqueEmails.has(c.email.toLowerCase())) {
+          uniqueEmails.set(c.email.toLowerCase(), {
+            email: c.email, name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown', company_name: c.companies?.name || null, _source: 'contact',
+          });
+        }
+      });
+      setAvailableRecipients(Array.from(uniqueEmails.values()));
     } catch (error: any) {
       toast.error('Failed to load campaign data');
       console.error(error);
@@ -633,7 +610,7 @@ export default function CampaignDetailPage() {
           email: r.email,
           name: r.name,
           company_name: r.company_name || null,
-          source: campaign.target_type === 'individual' ? 'candidate' : 'contact',
+          source: r._source || 'contact',
         }));
 
       const { error } = await supabase
@@ -859,6 +836,16 @@ export default function CampaignDetailPage() {
                 <Badge className={campaign.status === 'sent' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
                   {campaign.status}
                 </Badge>
+                {campaign.audience_id && (
+                  <Badge
+                    variant="outline"
+                    className="cursor-pointer hover:bg-slate-100 flex items-center gap-1"
+                    onClick={() => router.push(`/marketing/audiences/${campaign.audience_id}`)}
+                  >
+                    <UsersRound className="h-3 w-3" />
+                    Linked Audience
+                  </Badge>
+                )}
               </div>
             </div>
             {campaign.status === 'draft' && recipients.length > 0 && (
@@ -1006,17 +993,8 @@ export default function CampaignDetailPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
-                    {campaign.target_type === 'individual' ? (
-                      <>
-                        <User className="h-5 w-5" />
-                        Add from Candidates
-                      </>
-                    ) : (
-                      <>
-                        <Building2 className="h-5 w-5" />
-                        Add from Contacts
-                      </>
-                    )}
+                    <Users className="h-5 w-5" />
+                    Add from CRM
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={handleSelectAll} disabled={filteredAvailable.length === 0}>
@@ -1031,7 +1009,7 @@ export default function CampaignDetailPage() {
               <CardContent>
                 {filteredAvailable.length === 0 ? (
                   <p className="text-sm text-slate-500 text-center py-4">
-                    No more {campaign.target_type === 'individual' ? 'candidates' : 'contacts'} available to add
+                    No more contacts available to add
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1086,17 +1064,32 @@ export default function CampaignDetailPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {recipient.sent && (
-                        <Badge variant="default" className="flex items-center gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          Sent
+                      {recipient.delivery_status === 'skipped_unsubscribed' ? (
+                        <Badge className="bg-slate-100 text-slate-600 flex items-center gap-1">
+                          <Ban className="h-3 w-3" />
+                          Skipped (Unsubscribed)
                         </Badge>
-                      )}
-                      {recipient.opened_at && (
-                        <Badge variant="default" className="flex items-center gap-1 bg-green-600">
-                          <Eye className="h-3 w-3" />
-                          Opened{recipient.open_count > 1 ? ` (${recipient.open_count}x)` : ''}
-                        </Badge>
+                      ) : (
+                        <>
+                          {recipient.sent && (
+                            <Badge variant="default" className="flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" />
+                              Sent
+                            </Badge>
+                          )}
+                          {recipient.opened_at && (
+                            <Badge variant="default" className="flex items-center gap-1 bg-green-600">
+                              <Eye className="h-3 w-3" />
+                              Opened{recipient.open_count > 1 ? ` (${recipient.open_count}x)` : ''}
+                            </Badge>
+                          )}
+                          {recipient.unsubscribed_at && (
+                            <Badge className="bg-red-100 text-red-700 flex items-center gap-1">
+                              <Ban className="h-3 w-3" />
+                              Unsubscribed
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

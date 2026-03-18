@@ -182,6 +182,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { data: unsubscribedList } = await supabase
+      .from("unsubscribed_emails")
+      .select("email");
+
+    const unsubscribedSet = new Set(
+      (unsubscribedList || []).map((u: any) => u.email.toLowerCase())
+    );
+
     const BATCH_SIZE = 50;
 
     const { data: recipients, error: recipientsError } = await supabase
@@ -231,8 +239,21 @@ Deno.serve(async (req: Request) => {
 
     for (const recipient of recipients) {
       try {
+        if (unsubscribedSet.has(recipient.email.toLowerCase())) {
+          await supabase
+            .from("campaign_recipients")
+            .update({
+              sent: true,
+              sent_at: new Date().toISOString(),
+              delivery_status: 'skipped_unsubscribed'
+            })
+            .eq("id", recipient.id);
+          sentCount++;
+          continue;
+        }
+
         const firstName = recipient.name.split(' ')[0] || recipient.name;
-        
+
         let personalizedBody = campaign.email_templates.body
           .replace(/\[Recipient's Name\]/g, firstName)
           .replace(/\[recipient's name\]/g, firstName)

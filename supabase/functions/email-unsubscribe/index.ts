@@ -53,6 +53,14 @@ Deno.serve(async (req: Request) => {
         }, {
           onConflict: 'email'
         });
+
+      await supabase
+        .from('audience_members')
+        .update({
+          subscribed: false,
+          unsubscribed_at: new Date().toISOString()
+        })
+        .eq('email', email.toLowerCase());
     }
 
     const html = `
