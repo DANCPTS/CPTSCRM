@@ -430,7 +430,6 @@ export default function CampaignDetailPage() {
         email: r.email,
         name: r.name,
         company_name: r.company_name || null,
-        source: 'excel_upload',
       }));
 
       const { error } = await supabase
@@ -610,7 +609,6 @@ export default function CampaignDetailPage() {
           email: r.email,
           name: r.name,
           company_name: r.company_name || null,
-          source: r._source || 'contact',
         }));
 
       const { error } = await supabase

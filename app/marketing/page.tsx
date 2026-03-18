@@ -312,7 +312,6 @@ export default function MarketingPage() {
             email: m.email,
             name: m.name,
             company_name: m.company_name || null,
-            source: m.source,
           }));
       } else {
         recipientsToInsert = csvRecipients.map(r => ({
@@ -320,7 +319,6 @@ export default function MarketingPage() {
           email: r.email,
           name: r.name,
           company_name: r.company_name || null,
-          source: 'csv_upload',
         }));
       }
 
