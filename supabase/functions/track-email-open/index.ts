@@ -19,7 +19,7 @@ Deno.serve(async (req: Request) => {
       const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      await supabase.rpc('increment_recipient_open_count', { recipient_id: recipientId });
+      await supabase.rpc('increment_recipient_open_count', { rid: recipientId });
     }
 
     return new Response(TRANSPARENT_GIF, {

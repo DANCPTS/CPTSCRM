@@ -19,8 +19,8 @@ Deno.serve(async (req: Request) => {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       await supabase.rpc('increment_recipient_click_count', {
-        recipient_id: recipientId,
-        link_url: decodedUrl
+        rid: recipientId,
+        click_url: decodedUrl
       });
     }
 
