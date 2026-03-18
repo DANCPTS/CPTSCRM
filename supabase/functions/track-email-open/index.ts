@@ -20,21 +20,28 @@ Deno.serve(async (req: Request) => {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       await supabase.rpc('increment_recipient_open_count', { rid: recipientId });
+
+      await supabase
+        .from('campaign_recipients')
+        .update({ opened: true })
+        .eq('id', recipientId)
+        .is('opened', false);
     }
 
     return new Response(TRANSPARENT_GIF, {
       headers: {
         'Content-Type': 'image/gif',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
         'Pragma': 'no-cache',
-        'Expires': '0',
+        'Expires': 'Thu, 01 Jan 1970 00:00:00 GMT',
+        'ETag': `"${Date.now()}"`,
       },
     });
   } catch (error) {
     return new Response(TRANSPARENT_GIF, {
       headers: {
         'Content-Type': 'image/gif',
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'no-store, max-age=0',
       },
     });
   }

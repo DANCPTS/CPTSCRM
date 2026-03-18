@@ -28,12 +28,14 @@ function convertMarkdownToHtml(text: string): string {
 
 function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: string): string {
   const trackingBaseUrl = `${supabaseUrl}/functions/v1/track-email-click`;
+  let linkIndex = 0;
   return html.replace(
     /href="(https?:\/\/[^"]+)"/g,
     (match, url) => {
       if (url.includes('/functions/v1/')) return match;
       const encodedUrl = encodeURIComponent(url);
-      return `href="${trackingBaseUrl}?rid=${recipientId}&url=${encodedUrl}"`;
+      linkIndex++;
+      return `href="${trackingBaseUrl}?rid=${recipientId}&url=${encodedUrl}&l=${linkIndex}"`;
     }
   );
 }
@@ -253,51 +255,65 @@ Deno.serve(async (req: Request) => {
         const htmlBody = convertMarkdownToHtml(personalizedBody);
         const trackedHtmlBody = wrapLinksWithTracking(htmlBody, recipient.id, supabaseUrl);
 
-        const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}`;
+        const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}&t=${Date.now()}`;
         const unsubscribeUrl = `${supabaseUrl}/functions/v1/email-unsubscribe?rid=${recipient.id}`;
 
-        const emailHtml = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background-color: #0f3d5e; color: white; padding: 30px 20px; text-align: center; }
-              .logo { max-width: 250px; height: auto; margin: 0 auto 15px; display: block; }
-              .content { background-color: #f9fafb; padding: 30px; }
-              .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-              .unsubscribe { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; }
-              .unsubscribe a { color: #9ca3af; text-decoration: underline; font-size: 11px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training" class="logo" />
-              </div>
-              <div class="content">
-                ${trackedHtmlBody}
-              </div>
-              <div class="footer">
-                <p><strong>${emailSettings.from_name}</strong></p>
-                <p>01234 604 151 | ${emailSettings.from_email}</p>
-                <p>cpcs-training-courses.co.uk</p>
-                <div class="unsubscribe">
-                  <a href="${unsubscribeUrl}">Unsubscribe from marketing emails</a>
-                </div>
-              </div>
-            </div>
-            <img src="${trackingPixelUrl}" width="1" height="1" style="display:none;" alt="" />
-          </body>
-          </html>
-        `;
+        const plainTextBody = personalizedBody
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
+          .replace(/\[([^\]]+)\]\(#\)/g, '$1');
+
+        const emailHtml = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${campaign.email_templates.subject}</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#333333;background-color:#f4f4f4;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding:20px 10px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:4px;overflow:hidden;">
+          <tr>
+            <td style="background-color:#0f3d5e;padding:30px 20px;text-align:center;">
+              <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training Courses" width="250" style="max-width:250px;height:auto;display:block;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:30px;background-color:#ffffff;">
+              ${trackedHtmlBody}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px;text-align:center;font-size:12px;color:#666666;border-top:1px solid #eeeeee;">
+              <p style="margin:0 0 5px;"><strong>${emailSettings.from_name}</strong></p>
+              <p style="margin:0 0 5px;">01234 604 151 | ${emailSettings.from_email}</p>
+              <p style="margin:0 0 15px;">cpcs-training-courses.co.uk</p>
+              <p style="margin:0;padding-top:15px;border-top:1px solid #eeeeee;">
+                <a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;font-size:11px;">Unsubscribe from marketing emails</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />
+</body>
+</html>`;
 
         await transporter.sendMail({
           from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
           to: recipient.email,
           subject: campaign.email_templates.subject,
+          text: plainTextBody + `\n\nUnsubscribe: ${unsubscribeUrl}`,
           html: emailHtml,
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         });
 
         console.log(`Email sent to ${recipient.email}`);

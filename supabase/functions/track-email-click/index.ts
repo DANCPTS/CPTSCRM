@@ -24,11 +24,16 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const separator = decodedUrl.includes('?') ? '&' : '?';
+    const cacheBustedUrl = `${decodedUrl}${separator}_t=${Date.now()}`;
+
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': decodedUrl,
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Location': cacheBustedUrl,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (error) {
