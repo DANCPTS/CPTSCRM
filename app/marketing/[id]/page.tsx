@@ -633,6 +633,31 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleRetryCampaign = async () => {
+    try {
+      const { error: resetRecipientsError } = await supabase
+        .from('campaign_recipients')
+        .update({ sent: false, delivery_status: 'pending' })
+        .eq('campaign_id', campaignId)
+        .eq('delivery_status', 'failed');
+
+      if (resetRecipientsError) throw resetRecipientsError;
+
+      const { error: resetCampaignError } = await supabase
+        .from('marketing_campaigns')
+        .update({ status: 'draft', sent_at: null })
+        .eq('id', campaignId);
+
+      if (resetCampaignError) throw resetCampaignError;
+
+      toast.success('Campaign reset - ready to resend');
+      await loadCampaignData();
+      handleSendCampaign();
+    } catch (error: any) {
+      toast.error('Failed to reset campaign: ' + error.message);
+    }
+  };
+
   const handleSendCampaign = async () => {
     if (recipients.length === 0) {
       toast.error('Please add recipients before sending');
@@ -848,7 +873,7 @@ export default function CampaignDetailPage() {
                 <Badge variant="outline">
                   {campaign.target_type === 'business' ? 'Businesses' : 'Individuals'}
                 </Badge>
-                <Badge className={campaign.status === 'sent' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                <Badge className={campaign.status === 'sent' ? 'bg-green-100 text-green-800' : campaign.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}>
                   {campaign.status}
                 </Badge>
                 {campaign.audience_id && (
@@ -874,6 +899,18 @@ export default function CampaignDetailPage() {
                 <Send className="mr-2 h-4 w-4" />
                 {sending ? 'Sending...' : 'Resume Sending'}
               </Button>
+            )}
+            {campaign.status === 'failed' && (
+              <div className="flex items-center gap-3">
+                <Badge className="bg-red-100 text-red-700 px-3 py-1">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  Failed
+                </Badge>
+                <Button onClick={handleRetryCampaign} disabled={sending} variant="default">
+                  <Send className="mr-2 h-4 w-4" />
+                  {sending ? 'Retrying...' : 'Retry Campaign'}
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -921,7 +958,7 @@ export default function CampaignDetailPage() {
           />
         </div>
 
-        {campaign.status === 'draft' && (
+        {(campaign.status === 'draft' || campaign.status === 'failed') && (
           <div className="mt-6 space-y-6">
             <Card>
               <CardHeader>
