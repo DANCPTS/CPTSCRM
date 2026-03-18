@@ -17,33 +17,6 @@ interface EmailSettings {
   from_name: string;
 }
 
-async function sendEmail(to: string, subject: string, htmlBody: string, settings: EmailSettings): Promise<void> {
-  const transporter = nodemailer.createTransport({
-    host: settings.smtp_host,
-    port: settings.smtp_port,
-    secure: settings.smtp_port === 465,
-    auth: {
-      user: settings.smtp_username,
-      pass: settings.smtp_password,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 15000,
-    socketTimeout: 30000,
-  });
-
-  const info = await transporter.sendMail({
-    from: `${settings.from_name} <${settings.from_email}>`,
-    to,
-    subject,
-    html: htmlBody,
-  });
-
-  console.log(`Email sent to ${to}, messageId: ${info.messageId}`);
-}
-
 function convertMarkdownToHtml(text: string): string {
   return text
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -63,6 +36,13 @@ function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: s
       return `href="${trackingBaseUrl}?rid=${recipientId}&url=${encodedUrl}"`;
     }
   );
+}
+
+const BATCH_SIZE = 10;
+const DELAY_BETWEEN_EMAILS_MS = 2000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 Deno.serve(async (req: Request) => {
@@ -160,8 +140,6 @@ Deno.serve(async (req: Request) => {
       (unsubscribedList || []).map((u: any) => u.email.toLowerCase())
     );
 
-    const BATCH_SIZE = 50;
-
     const { data: recipients, error: recipientsError } = await supabase
       .from("campaign_recipients")
       .select("*")
@@ -204,10 +182,51 @@ Deno.serve(async (req: Request) => {
       .update({ status: "sending" })
       .eq("id", campaignId);
 
+    const transporter = nodemailer.createTransport({
+      host: emailSettings.smtp_host,
+      port: emailSettings.smtp_port,
+      secure: emailSettings.smtp_port === 465,
+      auth: {
+        user: emailSettings.smtp_username,
+        pass: emailSettings.smtp_password,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+      connectionTimeout: 30000,
+      greetingTimeout: 15000,
+      socketTimeout: 60000,
+      pool: true,
+      maxConnections: 1,
+      maxMessages: BATCH_SIZE + 5,
+      rateDelta: 2000,
+      rateLimit: 1,
+    });
+
     let sentCount = 0;
     const errors: string[] = [];
 
-    for (const recipient of recipients) {
+    try {
+      await transporter.verify();
+    } catch (verifyErr) {
+      transporter.close();
+      return new Response(
+        JSON.stringify({
+          success: false,
+          sentCount: 0,
+          remaining: remainingCount || 0,
+          complete: false,
+          error: `SMTP connection failed: ${verifyErr.message}. Check your email settings.`,
+          errors: [`SMTP connection failed: ${verifyErr.message}`],
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    for (let i = 0; i < recipients.length; i++) {
+      const recipient = recipients[i];
       try {
         if (unsubscribedSet.has(recipient.email.toLowerCase())) {
           await supabase
@@ -274,12 +293,14 @@ Deno.serve(async (req: Request) => {
           </html>
         `;
 
-        await sendEmail(
-          recipient.email,
-          campaign.email_templates.subject,
-          emailHtml,
-          emailSettings
-        );
+        await transporter.sendMail({
+          from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
+          to: recipient.email,
+          subject: campaign.email_templates.subject,
+          html: emailHtml,
+        });
+
+        console.log(`Email sent to ${recipient.email}`);
 
         await supabase
           .from("campaign_recipients")
@@ -291,8 +312,12 @@ Deno.serve(async (req: Request) => {
           .eq("id", recipient.id);
 
         sentCount++;
+
+        if (i < recipients.length - 1) {
+          await delay(DELAY_BETWEEN_EMAILS_MS);
+        }
       } catch (error) {
-        errors.push(`Failed to send to ${recipient.email}: ${error.message}`);
+        errors.push(`Failed: ${recipient.email} - ${error.message}`);
         console.error(`Failed to send to ${recipient.email}:`, error);
 
         await supabase
@@ -301,6 +326,8 @@ Deno.serve(async (req: Request) => {
           .eq("id", recipient.id);
       }
     }
+
+    transporter.close();
 
     const remainingAfterBatch = (remainingCount || 0) - sentCount;
 
