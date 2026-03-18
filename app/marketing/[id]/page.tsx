@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CheckCircle, Eye, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, AlertTriangle, Ban, Flag, TrendingUp, Users, BarChart3, Link2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -335,6 +335,7 @@ export default function CampaignDetailPage() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [linkClicks, setLinkClicks] = useState<any[]>([]);
   const [activeReportTab, setActiveReportTab] = useState('summary');
+  const editTemplateActionRef = useRef(false);
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -736,6 +737,7 @@ export default function CampaignDetailPage() {
       if (error) throw error;
 
       toast.success('Template updated successfully');
+      editTemplateActionRef.current = true;
       setEditTemplateOpen(false);
       loadCampaignData();
     } catch (error: any) {
@@ -743,6 +745,23 @@ export default function CampaignDetailPage() {
       console.error(error);
     } finally {
       setSavingTemplate(false);
+    }
+  };
+
+  const autoSaveTemplate = async () => {
+    if (!campaign?.email_templates?.id) return;
+    try {
+      await supabase
+        .from('email_templates')
+        .update({
+          subject: editingSubject,
+          body: editingBody,
+        })
+        .eq('id', campaign.email_templates.id);
+      toast.success('Template changes saved');
+      loadCampaignData();
+    } catch (error: any) {
+      console.error('Failed to auto-save template:', error);
     }
   };
 
@@ -1102,7 +1121,13 @@ export default function CampaignDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editTemplateOpen} onOpenChange={setEditTemplateOpen}>
+      <Dialog open={editTemplateOpen} onOpenChange={async (open) => {
+        if (!open && !editTemplateActionRef.current && campaign?.email_templates?.id) {
+          await autoSaveTemplate();
+        }
+        editTemplateActionRef.current = false;
+        setEditTemplateOpen(open);
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Edit Email Template</DialogTitle>
@@ -1219,8 +1244,11 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={() => setEditTemplateOpen(false)}>
-              Cancel
+            <Button variant="outline" onClick={() => {
+              editTemplateActionRef.current = true;
+              setEditTemplateOpen(false);
+            }}>
+              Discard Changes
             </Button>
             <Button onClick={handleSaveTemplate} disabled={savingTemplate}>
               {savingTemplate ? 'Saving...' : 'Save Changes'}

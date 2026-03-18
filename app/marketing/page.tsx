@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CheckCircle, XCircle, Trash2, RefreshCw, Edit2, Code, Image, Upload, Loader2, FileSpreadsheet, X } from 'lucide-react';
+import { Plus, Mail, Building2, User, Send, Sparkles, Eye, Clock, CircleCheck as CheckCircle, Circle as XCircle, Trash2, RefreshCw, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
@@ -56,6 +56,8 @@ export default function MarketingPage() {
   const [previewTemplate, setPreviewTemplate] = useState<any>(null);
   const [savingTemplateEdit, setSavingTemplateEdit] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const templateActionRef = useRef(false);
+  const editTemplateActionRef = useRef(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -150,6 +152,7 @@ export default function MarketingPage() {
       if (error) throw error;
 
       toast.success('Template created successfully');
+      templateActionRef.current = true;
       setTemplateDialogOpen(false);
       resetTemplateForm();
       loadData();
@@ -438,6 +441,7 @@ export default function MarketingPage() {
       if (error) throw error;
 
       toast.success('Template updated successfully');
+      editTemplateActionRef.current = true;
       setEditTemplateDialogOpen(false);
       setEditingTemplateId(null);
       resetTemplateForm();
@@ -447,6 +451,25 @@ export default function MarketingPage() {
       console.error(error);
     } finally {
       setSavingTemplateEdit(false);
+    }
+  };
+
+  const autoSaveEditTemplate = async () => {
+    if (!editingTemplateId) return;
+    try {
+      await supabase
+        .from('email_templates')
+        .update({
+          name: templateName || 'Untitled Draft',
+          subject: templateSubject || '',
+          body: templateBody || '',
+          category: templateCategory,
+        })
+        .eq('id', editingTemplateId);
+      toast.success('Template changes saved');
+      loadData();
+    } catch (error: any) {
+      console.error('Failed to auto-save template:', error);
     }
   };
 
@@ -776,7 +799,31 @@ export default function MarketingPage() {
         </Tabs>
       </div>
 
-      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+      <Dialog open={templateDialogOpen} onOpenChange={async (open) => {
+        if (!open && !templateActionRef.current && (templateName || templateSubject || templateBody)) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              await supabase
+                .from('email_templates')
+                .insert({
+                  name: templateName || 'Untitled Draft',
+                  subject: templateSubject || '',
+                  body: templateBody || '',
+                  category: templateCategory,
+                  created_by: user.id,
+                });
+              toast.success('Template saved as draft');
+              loadData();
+            }
+          } catch (error: any) {
+            console.error('Failed to auto-save template:', error);
+          }
+          resetTemplateForm();
+        }
+        templateActionRef.current = false;
+        setTemplateDialogOpen(open);
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Email Template</DialogTitle>
@@ -924,10 +971,11 @@ export default function MarketingPage() {
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
+              templateActionRef.current = true;
               setTemplateDialogOpen(false);
               resetTemplateForm();
             }}>
-              Cancel
+              Discard
             </Button>
             <Button onClick={handleCreateTemplate}>
               Create Template
@@ -1139,7 +1187,11 @@ export default function MarketingPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editTemplateDialogOpen} onOpenChange={(open) => {
+      <Dialog open={editTemplateDialogOpen} onOpenChange={async (open) => {
+        if (!open && !editTemplateActionRef.current && editingTemplateId) {
+          await autoSaveEditTemplate();
+        }
+        editTemplateActionRef.current = false;
         setEditTemplateDialogOpen(open);
         if (!open) {
           setEditingTemplateId(null);
@@ -1289,11 +1341,12 @@ export default function MarketingPage() {
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
+              editTemplateActionRef.current = true;
               setEditTemplateDialogOpen(false);
               setEditingTemplateId(null);
               resetTemplateForm();
             }}>
-              Cancel
+              Discard Changes
             </Button>
             <Button onClick={handleSaveTemplateEdit} disabled={savingTemplateEdit}>
               {savingTemplateEdit ? 'Saving...' : 'Save Changes'}
