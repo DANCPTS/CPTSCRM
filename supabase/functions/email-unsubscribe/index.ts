@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const SITE_URL = Deno.env.get("SITE_URL") || "https://cpts-training-crm.netlify.app";
+const SITE_URL = "https://cpts-training-crm.netlify.app";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
