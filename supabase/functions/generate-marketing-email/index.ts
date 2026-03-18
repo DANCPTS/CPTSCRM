@@ -99,8 +99,13 @@ Do not include any other text outside the JSON object.`;
     if (!response.ok) {
       const errorData = await response.text();
       console.error("OpenAI API error:", errorData);
+      let errorMessage = "Failed to generate email with AI";
+      try {
+        const parsed = JSON.parse(errorData);
+        errorMessage = parsed?.error?.message || errorMessage;
+      } catch (_) {}
       return new Response(
-        JSON.stringify({ success: false, error: "Failed to generate email with AI" }),
+        JSON.stringify({ success: false, error: errorMessage }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -122,7 +127,11 @@ Do not include any other text outside the JSON object.`;
     }
 
     try {
-      const parsedContent = JSON.parse(generatedContent);
+      let jsonStr = generatedContent.trim();
+      if (jsonStr.startsWith("```")) {
+        jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+      }
+      const parsedContent = JSON.parse(jsonStr);
       return new Response(
         JSON.stringify({
           success: true,
