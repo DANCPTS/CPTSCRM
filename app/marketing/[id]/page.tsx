@@ -650,6 +650,8 @@ export default function CampaignDetailPage() {
         'Content-Type': 'application/json',
       };
 
+      let noProgressCount = 0;
+
       while (!hasError) {
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -659,20 +661,35 @@ export default function CampaignDetailPage() {
 
         const result = await response.json();
 
-        if (!response.ok || !result.success) {
+        if (!result.success) {
           toast.error('Failed to send campaign: ' + (result.error || 'Unknown error'));
           hasError = true;
           break;
         }
 
+        if (result.sentCount === 0 && !result.complete) {
+          noProgressCount++;
+          if (noProgressCount >= 3) {
+            toast.error('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
+            hasError = true;
+            break;
+          }
+        } else {
+          noProgressCount = 0;
+        }
+
         totalSent += result.sentCount;
 
-        if (result.remaining > 0) {
+        if (result.remaining > 0 && !result.complete) {
           toast.info(`Sending... ${totalSent} sent, ${result.remaining} remaining`);
         }
 
         if (result.complete) {
-          toast.success(`Campaign completed! Sent to ${totalSent} recipients`);
+          if (totalSent > 0) {
+            toast.success(`Campaign completed! Sent to ${totalSent} recipients`);
+          } else {
+            toast.error('Campaign failed - no emails could be sent. Check your SMTP settings.');
+          }
           break;
         }
 

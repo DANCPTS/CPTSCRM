@@ -303,13 +303,38 @@ Deno.serve(async (req: Request) => {
     }
 
     const remainingAfterBatch = (remainingCount || 0) - sentCount;
+
+    if (sentCount === 0 && errors.length > 0) {
+      await supabase
+        .from("marketing_campaigns")
+        .update({
+          status: "failed",
+          sent_at: new Date().toISOString(),
+        })
+        .eq("id", campaignId);
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          sentCount: 0,
+          remaining: remainingAfterBatch,
+          complete: true,
+          error: errors[0],
+          errors,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const complete = remainingAfterBatch <= 0;
 
     if (complete) {
       await supabase
         .from("marketing_campaigns")
         .update({
-          status: errors.length > 0 && sentCount === 0 ? "failed" : "sent",
+          status: "sent",
           sent_at: new Date().toISOString(),
         })
         .eq("id", campaignId);
