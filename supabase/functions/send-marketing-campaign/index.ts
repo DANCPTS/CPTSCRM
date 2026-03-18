@@ -26,14 +26,22 @@ async function sendEmail(to: string, subject: string, htmlBody: string, settings
       user: settings.smtp_username,
       pass: settings.smtp_password,
     },
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   });
 
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from: `${settings.from_name} <${settings.from_email}>`,
     to,
     subject,
     html: htmlBody,
   });
+
+  console.log(`Email sent to ${to}, messageId: ${info.messageId}`);
 }
 
 function convertMarkdownToHtml(text: string): string {
