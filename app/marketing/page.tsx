@@ -21,6 +21,23 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
+async function fetchAllRows(buildQuery: () => any) {
+  const PAGE_SIZE = 1000;
+  let allData: any[] = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await buildQuery().range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (error) throw error;
+    if (data) allData = allData.concat(data);
+    hasMore = (data?.length || 0) === PAGE_SIZE;
+    page++;
+  }
+
+  return allData;
+}
+
 export default function MarketingPage() {
   const router = useRouter();
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -294,15 +311,19 @@ export default function MarketingPage() {
       let recipientsToInsert: any[] = [];
 
       if (campaignRecipientMode === 'audience') {
-        const { data: members } = await supabase
-          .from('audience_members')
-          .select('*')
-          .eq('audience_id', selectedAudienceId)
-          .eq('subscribed', true);
+        const members = await fetchAllRows(() =>
+          supabase
+            .from('audience_members')
+            .select('*')
+            .eq('audience_id', selectedAudienceId)
+            .eq('subscribed', true)
+        );
 
-        const { data: unsubList } = await supabase
-          .from('unsubscribed_emails')
-          .select('email');
+        const unsubList = await fetchAllRows(() =>
+          supabase
+            .from('unsubscribed_emails')
+            .select('email')
+        );
         const unsubSet = new Set((unsubList || []).map((u: any) => u.email.toLowerCase()));
 
         recipientsToInsert = (members || [])

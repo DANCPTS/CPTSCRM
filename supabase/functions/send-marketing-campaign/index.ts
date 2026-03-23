@@ -134,12 +134,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: unsubscribedList } = await supabase
-      .from("unsubscribed_emails")
-      .select("email");
+    const allUnsubscribed: any[] = [];
+    let unsubPage = 0;
+    let unsubHasMore = true;
+    while (unsubHasMore) {
+      const { data: unsubBatch } = await supabase
+        .from("unsubscribed_emails")
+        .select("email")
+        .range(unsubPage * 1000, (unsubPage + 1) * 1000 - 1);
+      if (unsubBatch) allUnsubscribed.push(...unsubBatch);
+      unsubHasMore = (unsubBatch?.length || 0) === 1000;
+      unsubPage++;
+    }
 
     const unsubscribedSet = new Set(
-      (unsubscribedList || []).map((u: any) => u.email.toLowerCase())
+      allUnsubscribed.map((u: any) => u.email.toLowerCase())
     );
 
     const { data: recipients, error: recipientsError } = await supabase
