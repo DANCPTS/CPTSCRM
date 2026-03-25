@@ -295,19 +295,21 @@ Deno.serve(async (req: Request) => {
           }),
         });
 
+        const resendResult = await resendResponse.json();
+
         if (!resendResponse.ok) {
-          const errorData = await resendResponse.json();
-          throw new Error(errorData.message || `Resend API error: ${resendResponse.status}`);
+          throw new Error(resendResult.message || `Resend API error: ${resendResponse.status}`);
         }
 
-        console.log(`Email sent to ${recipient.email}`);
+        const resendMessageId = resendResult.id || null;
 
         await supabase
           .from("campaign_recipients")
           .update({
             sent: true,
             sent_at: new Date().toISOString(),
-            delivery_status: 'delivered'
+            delivery_status: 'sent',
+            resend_message_id: resendMessageId,
           })
           .eq("id", recipient.id);
 

@@ -591,13 +591,22 @@ export default function CampaignDetailPage() {
 
       setRecipients(allRecipients);
 
-      const { data: linkClicksData } = await supabase
-        .from('email_link_clicks')
-        .select('*')
-        .eq('campaign_id', campaignId)
-        .order('clicked_at', { ascending: false });
+      const allLinkClicks: any[] = [];
+      let clickPage = 0;
+      let clickHasMore = true;
+      while (clickHasMore) {
+        const { data: clickBatch } = await supabase
+          .from('email_link_clicks')
+          .select('*')
+          .eq('campaign_id', campaignId)
+          .order('clicked_at', { ascending: false })
+          .range(clickPage * 1000, (clickPage + 1) * 1000 - 1);
+        if (clickBatch) allLinkClicks.push(...clickBatch);
+        clickHasMore = (clickBatch?.length || 0) === 1000;
+        clickPage++;
+      }
 
-      setLinkClicks(linkClicksData || []);
+      setLinkClicks(allLinkClicks);
 
       const [candidatesRes, contactsRes] = await Promise.all([
         supabase.from('candidates').select('first_name, last_name, email').not('email', 'is', null).order('created_at', { ascending: false }),
