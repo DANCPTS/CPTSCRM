@@ -97,10 +97,7 @@ export default function SettingsPage() {
     from_name: '',
   });
   const [marketingSettings, setMarketingSettings] = useState({
-    smtp_host: '',
-    smtp_port: 465,
-    smtp_username: '',
-    smtp_password: '',
+    resend_api_key: '',
     from_email: '',
     from_name: '',
   });
@@ -108,7 +105,7 @@ export default function SettingsPage() {
   const [savingTransactional, setSavingTransactional] = useState(false);
   const [savingMarketing, setSavingMarketing] = useState(false);
   const [showTransactionalPassword, setShowTransactionalPassword] = useState(false);
-  const [showMarketingPassword, setShowMarketingPassword] = useState(false);
+  const [showResendKey, setShowResendKey] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -230,10 +227,7 @@ export default function SettingsPage() {
 
         if (marketing) {
           setMarketingSettings({
-            smtp_host: marketing.smtp_host || '',
-            smtp_port: marketing.smtp_port || 465,
-            smtp_username: marketing.smtp_username || '',
-            smtp_password: marketing.smtp_password || '',
+            resend_api_key: marketing.resend_api_key || '',
             from_email: marketing.from_email || '',
             from_name: marketing.from_name || '',
           });
@@ -278,10 +272,7 @@ export default function SettingsPage() {
         .from('email_settings')
         .upsert({
           settings_type: 'marketing',
-          smtp_host: marketingSettings.smtp_host,
-          smtp_port: marketingSettings.smtp_port,
-          smtp_username: marketingSettings.smtp_username,
-          smtp_password: marketingSettings.smtp_password,
+          resend_api_key: marketingSettings.resend_api_key,
           from_email: marketingSettings.from_email,
           from_name: marketingSettings.from_name,
         }, { onConflict: 'settings_type' });
@@ -840,7 +831,7 @@ export default function SettingsPage() {
                   Marketing Email Settings
                 </CardTitle>
                 <CardDescription>
-                  Configure SMTP for marketing campaigns (can be different from transactional)
+                  Marketing campaigns are sent via Resend API for better deliverability
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -848,62 +839,29 @@ export default function SettingsPage() {
                   <p className="text-sm text-muted-foreground">Loading email settings...</p>
                 ) : (
                   <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="mkt_smtp_host">SMTP Host</Label>
-                        <div className="relative">
-                          <Server className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="mkt_smtp_host"
-                            value={marketingSettings.smtp_host}
-                            onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_host: e.target.value })}
-                            placeholder="smtp.example.com"
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="mkt_smtp_port">SMTP Port</Label>
+                    <div className="space-y-2">
+                      <Label htmlFor="mkt_resend_key">Resend API Key</Label>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="mkt_smtp_port"
-                          type="number"
-                          value={marketingSettings.smtp_port}
-                          onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_port: parseInt(e.target.value) || 465 })}
-                          placeholder="465"
+                          id="mkt_resend_key"
+                          type={showResendKey ? 'text' : 'password'}
+                          value={marketingSettings.resend_api_key}
+                          onChange={(e) => setMarketingSettings({ ...marketingSettings, resend_api_key: e.target.value })}
+                          placeholder="re_xxxxxxxxx..."
+                          className="pl-10 pr-10"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowResendKey(!showResendKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showResendKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="mkt_smtp_username">SMTP Username</Label>
-                        <Input
-                          id="mkt_smtp_username"
-                          value={marketingSettings.smtp_username}
-                          onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_username: e.target.value })}
-                          placeholder="your@email.com"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="mkt_smtp_password">SMTP Password</Label>
-                        <div className="relative">
-                          <Input
-                            id="mkt_smtp_password"
-                            type={showMarketingPassword ? 'text' : 'password'}
-                            value={marketingSettings.smtp_password}
-                            onChange={(e) => setMarketingSettings({ ...marketingSettings, smtp_password: e.target.value })}
-                            placeholder="Enter password"
-                            className="pr-10"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowMarketingPassword(!showMarketingPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                          >
-                            {showMarketingPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Get your API key from resend.com/api-keys
+                      </p>
                     </div>
 
                     <div className="border-t pt-4">
@@ -916,8 +874,11 @@ export default function SettingsPage() {
                             type="email"
                             value={marketingSettings.from_email}
                             onChange={(e) => setMarketingSettings({ ...marketingSettings, from_email: e.target.value })}
-                            placeholder="marketing@example.com"
+                            placeholder="marketing@yourdomain.com"
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Must be a verified domain in Resend
+                          </p>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="mkt_from_name">From Name</Label>

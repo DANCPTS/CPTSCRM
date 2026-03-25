@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6.9.16";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,11 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface EmailSettings {
-  smtp_host: string;
-  smtp_port: number;
-  smtp_username: string;
-  smtp_password: string;
+interface MarketingEmailSettings {
+  resend_api_key: string;
   from_email: string;
   from_name: string;
 }
@@ -41,7 +37,7 @@ function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: s
 }
 
 const BATCH_SIZE = 10;
-const DELAY_BETWEEN_EMAILS_MS = 2000;
+const DELAY_BETWEEN_EMAILS_MS = 200;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -99,18 +95,25 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const emailSettings: EmailSettings = {
-      smtp_host: emailSettingsData.smtp_host,
-      smtp_port: emailSettingsData.smtp_port,
-      smtp_username: emailSettingsData.smtp_username,
-      smtp_password: emailSettingsData.smtp_password,
+    const emailSettings: MarketingEmailSettings = {
+      resend_api_key: emailSettingsData.resend_api_key,
       from_email: emailSettingsData.from_email,
       from_name: emailSettingsData.from_name,
     };
 
-    if (!emailSettings.smtp_host || !emailSettings.smtp_username || !emailSettings.smtp_password) {
+    if (!emailSettings.resend_api_key) {
       return new Response(
-        JSON.stringify({ success: false, error: "Incomplete email settings. Please configure SMTP host, username, and password in Settings." }),
+        JSON.stringify({ success: false, error: "Resend API key not configured. Please add your Resend API key in Marketing Email Settings." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!emailSettings.from_email) {
+      return new Response(
+        JSON.stringify({ success: false, error: "From email not configured. Please set a sender email in Marketing Email Settings." }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -193,48 +196,8 @@ Deno.serve(async (req: Request) => {
       .update({ status: "sending" })
       .eq("id", campaignId);
 
-    const transporter = nodemailer.createTransport({
-      host: emailSettings.smtp_host,
-      port: emailSettings.smtp_port,
-      secure: emailSettings.smtp_port === 465,
-      auth: {
-        user: emailSettings.smtp_username,
-        pass: emailSettings.smtp_password,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 30000,
-      greetingTimeout: 15000,
-      socketTimeout: 60000,
-      pool: true,
-      maxConnections: 1,
-      maxMessages: BATCH_SIZE + 5,
-      rateDelta: 2000,
-      rateLimit: 1,
-    });
-
     let sentCount = 0;
     const errors: string[] = [];
-
-    try {
-      await transporter.verify();
-    } catch (verifyErr) {
-      transporter.close();
-      return new Response(
-        JSON.stringify({
-          success: false,
-          sentCount: 0,
-          remaining: remainingCount || 0,
-          complete: false,
-          error: `SMTP connection failed: ${verifyErr.message}. Check your email settings.`,
-          errors: [`SMTP connection failed: ${verifyErr.message}`],
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
 
     for (let i = 0; i < recipients.length; i++) {
       const recipient = recipients[i];
@@ -266,12 +229,6 @@ Deno.serve(async (req: Request) => {
 
         const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}&t=${Date.now()}`;
         const unsubscribeUrl = `${supabaseUrl}/functions/v1/email-unsubscribe?rid=${recipient.id}`;
-
-        const plainTextBody = personalizedBody
-          .replace(/\*\*([^*]+)\*\*/g, '$1')
-          .replace(/\*([^*]+)\*/g, '$1')
-          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
-          .replace(/\[([^\]]+)\]\(#\)/g, '$1');
 
         const emailHtml = `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -313,17 +270,35 @@ Deno.serve(async (req: Request) => {
 </body>
 </html>`;
 
-        await transporter.sendMail({
-          from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
-          to: recipient.email,
-          subject: campaign.email_templates.subject,
-          text: plainTextBody + `\n\nUnsubscribe: ${unsubscribeUrl}`,
-          html: emailHtml,
+        const plainTextBody = personalizedBody
+          .replace(/\*\*([^*]+)\*\*/g, '$1')
+          .replace(/\*([^*]+)\*/g, '$1')
+          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
+          .replace(/\[([^\]]+)\]\(#\)/g, '$1');
+
+        const resendResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
           headers: {
-            'List-Unsubscribe': `<${unsubscribeUrl}>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            "Authorization": `Bearer ${emailSettings.resend_api_key}`,
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
+            to: [recipient.email],
+            subject: campaign.email_templates.subject,
+            html: emailHtml,
+            text: plainTextBody + `\n\nUnsubscribe: ${unsubscribeUrl}`,
+            headers: {
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          }),
         });
+
+        if (!resendResponse.ok) {
+          const errorData = await resendResponse.json();
+          throw new Error(errorData.message || `Resend API error: ${resendResponse.status}`);
+        }
 
         console.log(`Email sent to ${recipient.email}`);
 
@@ -351,8 +326,6 @@ Deno.serve(async (req: Request) => {
           .eq("id", recipient.id);
       }
     }
-
-    transporter.close();
 
     const remainingAfterBatch = (remainingCount || 0) - sentCount;
 
