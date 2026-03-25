@@ -72,13 +72,23 @@ export default function AudienceDetailPage() {
       setNameValue(audienceData.name);
       setDescValue(audienceData.description || '');
 
-      const { data: membersData } = await supabase
-        .from('audience_members')
-        .select('*')
-        .eq('audience_id', audienceId)
-        .order('added_at', { ascending: false });
+      const allMembers: any[] = [];
+      let page = 0;
+      const PAGE_SIZE = 1000;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: batch } = await supabase
+          .from('audience_members')
+          .select('*')
+          .eq('audience_id', audienceId)
+          .order('added_at', { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        if (batch) allMembers.push(...batch);
+        hasMore = (batch?.length || 0) === PAGE_SIZE;
+        page++;
+      }
 
-      setMembers(membersData || []);
+      setMembers(allMembers);
     } catch (error: any) {
       toast.error('Failed to load audience');
     } finally {
