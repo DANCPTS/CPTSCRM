@@ -197,6 +197,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", campaignId);
 
     let sentCount = 0;
+    let failedCount = 0;
     const errors: string[] = [];
 
     for (let i = 0; i < recipients.length; i++) {
@@ -324,37 +325,19 @@ Deno.serve(async (req: Request) => {
 
         await supabase
           .from("campaign_recipients")
-          .update({ delivery_status: 'failed' })
+          .update({
+            sent: true,
+            sent_at: new Date().toISOString(),
+            delivery_status: 'failed',
+          })
           .eq("id", recipient.id);
+
+        failedCount++;
       }
     }
 
-    const remainingAfterBatch = (remainingCount || 0) - sentCount;
-
-    if (sentCount === 0 && errors.length > 0) {
-      await supabase
-        .from("marketing_campaigns")
-        .update({
-          status: "failed",
-          sent_at: new Date().toISOString(),
-        })
-        .eq("id", campaignId);
-
-      return new Response(
-        JSON.stringify({
-          success: false,
-          sentCount: 0,
-          remaining: remainingAfterBatch,
-          complete: true,
-          error: errors[0],
-          errors,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
+    const processedCount = sentCount + failedCount;
+    const remainingAfterBatch = (remainingCount || 0) - processedCount;
     const complete = remainingAfterBatch <= 0;
 
     if (complete) {
@@ -370,9 +353,10 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: true,
-        sentCount,
+        sentCount: processedCount,
         remaining: remainingAfterBatch,
         complete,
+        failedCount,
         errors: errors.length > 0 ? errors : undefined,
       }),
       {

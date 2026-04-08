@@ -371,6 +371,7 @@ export default function CampaignDetailPage() {
   const [activeReportTab, setActiveReportTab] = useState('summary');
   const [sendProgress, setSendProgress] = useState<{
     totalSent: number;
+    totalFailed: number;
     totalRecipients: number;
     remaining: number;
     errors: string[];
@@ -379,6 +380,7 @@ export default function CampaignDetailPage() {
     status: 'idle' | 'sending' | 'complete' | 'error' | 'timeout';
   }>({
     totalSent: 0,
+    totalFailed: 0,
     totalRecipients: 0,
     remaining: 0,
     errors: [],
@@ -728,6 +730,7 @@ export default function CampaignDetailPage() {
     setSending(true);
     setSendProgress({
       totalSent: 0,
+      totalFailed: 0,
       totalRecipients: unsent,
       remaining: unsent,
       errors: [],
@@ -737,6 +740,7 @@ export default function CampaignDetailPage() {
     });
 
     let totalSent = 0;
+    let totalFailed = 0;
     let hasError = false;
     const collectedErrors: string[] = [];
 
@@ -814,11 +818,13 @@ export default function CampaignDetailPage() {
         }
 
         totalSent += result.sentCount;
+        totalFailed += result.failedCount || 0;
         const remaining = result.remaining || 0;
 
         setSendProgress(prev => ({
           ...prev,
           totalSent,
+          totalFailed,
           remaining,
           lastBatchAt: Date.now(),
           errors: [...collectedErrors],
@@ -1058,8 +1064,11 @@ export default function CampaignDetailPage() {
                 }>
                   <span className="font-bold text-2xl">{sendProgress.totalSent}</span>
                   <span className="mx-1">/</span>
-                  <span>{sendProgress.totalRecipients} sent</span>
+                  <span>{sendProgress.totalRecipients} processed</span>
                 </span>
+                {sendProgress.totalFailed > 0 && (
+                  <span className="text-red-600 font-medium">{sendProgress.totalFailed} failed</span>
+                )}
                 {sendProgress.remaining > 0 && sendProgress.status === 'sending' && (
                   <span className="text-blue-600">{sendProgress.remaining} remaining</span>
                 )}
@@ -1100,7 +1109,12 @@ export default function CampaignDetailPage() {
               )}
               {sendProgress.status === 'error' && sendProgress.totalSent > 0 && (
                 <div className="mt-3 text-sm text-red-700">
-                  {sendProgress.totalSent} emails were sent before the error. You can retry to send the remaining {sendProgress.remaining}.
+                  {sendProgress.totalSent - sendProgress.totalFailed} emails were sent before the error. You can retry to send the remaining {sendProgress.remaining}.
+                </div>
+              )}
+              {sendProgress.status === 'complete' && sendProgress.totalFailed > 0 && (
+                <div className="mt-3 text-sm text-amber-700">
+                  Campaign completed with {sendProgress.totalFailed} failed deliveries. Check the errors below for details.
                 </div>
               )}
             </div>
