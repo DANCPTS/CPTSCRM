@@ -74,7 +74,10 @@ function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }
   linkClicks: any[];
   onToggleReplied: (recipientId: string, currentlyReplied: boolean) => void;
 }) {
-  const sentCount = recipients.filter(r => r.sent).length;
+  const totalProcessed = recipients.filter(r => r.sent).length;
+  const failedDeliveryCount = recipients.filter(r => r.delivery_status === 'failed').length;
+  const skippedCount = recipients.filter(r => r.delivery_status === 'skipped_unsubscribed').length;
+  const sentCount = totalProcessed - failedDeliveryCount - skippedCount;
   const openedCount = recipients.filter(r => r.opened_at).length;
   const clickedCount = recipients.filter(r => r.clicked_at).length;
   const repliedCount = recipients.filter(r => r.replied_at).length;
@@ -128,9 +131,29 @@ function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }
           </TabsList>
 
           <TabsContent value="summary" className="space-y-5 mt-6">
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center">
-              <div className="text-sm font-medium text-slate-500 mb-2">Total Emails Sent</div>
-              <div className="text-5xl font-bold text-slate-900">{sentCount}</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center">
+                <div className="text-sm font-medium text-slate-500 mb-2">Successfully Sent</div>
+                <div className="text-5xl font-bold text-slate-900">{sentCount}</div>
+              </div>
+              {failedDeliveryCount > 0 && (
+                <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 text-center">
+                  <div className="text-sm font-medium text-red-500 mb-2">Failed to Send</div>
+                  <div className="text-5xl font-bold text-red-700">{failedDeliveryCount}</div>
+                </div>
+              )}
+              {skippedCount > 0 && (
+                <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center">
+                  <div className="text-sm font-medium text-slate-500 mb-2">Skipped (Unsubscribed)</div>
+                  <div className="text-5xl font-bold text-slate-400">{skippedCount}</div>
+                </div>
+              )}
+              {!failedDeliveryCount && !skippedCount && (
+                <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center md:col-span-2">
+                  <div className="text-sm font-medium text-slate-500 mb-2">Total Recipients</div>
+                  <div className="text-5xl font-bold text-slate-900">{recipients.length}</div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -232,7 +255,13 @@ function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-end ml-4">
-                    {recipient.sent && (
+                    {recipient.delivery_status === 'failed' && (
+                      <Badge className="bg-red-100 text-red-700 text-xs whitespace-nowrap">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Failed
+                      </Badge>
+                    )}
+                    {recipient.sent && recipient.delivery_status !== 'failed' && (
                       <Badge variant="outline" className="text-xs whitespace-nowrap">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Sent
@@ -377,7 +406,7 @@ export default function CampaignDetailPage() {
     errors: string[];
     startedAt: number | null;
     lastBatchAt: number | null;
-    status: 'idle' | 'sending' | 'complete' | 'error' | 'timeout';
+    status: 'idle' | 'sending' | 'complete' | 'error' | 'timeout' | 'quota_exhausted';
   }>({
     totalSent: 0,
     totalFailed: 0,
@@ -805,18 +834,6 @@ export default function CampaignDetailPage() {
           collectedErrors.push(...result.errors);
         }
 
-        if (result.sentCount === 0 && !result.complete) {
-          noProgressCount++;
-          if (noProgressCount >= 3) {
-            collectedErrors.push('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
-            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
-            hasError = true;
-            break;
-          }
-        } else {
-          noProgressCount = 0;
-        }
-
         totalSent += result.sentCount;
         totalFailed += result.failedCount || 0;
         const remaining = result.remaining || 0;
@@ -830,13 +847,39 @@ export default function CampaignDetailPage() {
           errors: [...collectedErrors],
         }));
 
-        if (result.complete) {
+        if (result.quotaExhausted) {
           setSendProgress(prev => ({
             ...prev,
             totalSent,
+            totalFailed,
+            remaining,
+            status: 'quota_exhausted',
+            errors: [...collectedErrors],
+          }));
+          break;
+        }
+
+        if (result.sentCount === 0 && !result.complete) {
+          noProgressCount++;
+          if (noProgressCount >= 3) {
+            collectedErrors.push('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
+            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
+            hasError = true;
+            break;
+          }
+        } else {
+          noProgressCount = 0;
+        }
+
+        if (result.complete) {
+          const actualSent = totalSent - totalFailed;
+          setSendProgress(prev => ({
+            ...prev,
+            totalSent,
+            totalFailed,
             remaining: 0,
-            status: totalSent > 0 ? 'complete' : 'error',
-            errors: totalSent === 0 ? [...collectedErrors, 'No emails could be sent. Check your SMTP settings.'] : [...collectedErrors],
+            status: actualSent > 0 ? 'complete' : 'error',
+            errors: actualSent === 0 ? [...collectedErrors, 'No emails could be sent. Check your Resend settings.'] : [...collectedErrors],
           }));
           break;
         }
@@ -1019,6 +1062,7 @@ export default function CampaignDetailPage() {
         {sendProgress.status !== 'idle' && (
           <div className={`mb-6 rounded-lg border-2 overflow-hidden ${
             sendProgress.status === 'complete' ? 'border-green-300 bg-green-50' :
+            sendProgress.status === 'quota_exhausted' ? 'border-amber-300 bg-amber-50' :
             sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'border-red-300 bg-red-50' :
             'border-blue-300 bg-blue-50'
           }`}>
@@ -1031,21 +1075,26 @@ export default function CampaignDetailPage() {
                   {sendProgress.status === 'complete' && (
                     <CheckCircle className="h-5 w-5 text-green-600" />
                   )}
+                  {sendProgress.status === 'quota_exhausted' && (
+                    <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  )}
                   {(sendProgress.status === 'error' || sendProgress.status === 'timeout') && (
                     <AlertTriangle className="h-5 w-5 text-red-600" />
                   )}
                   <span className={`font-semibold text-lg ${
                     sendProgress.status === 'complete' ? 'text-green-800' :
+                    sendProgress.status === 'quota_exhausted' ? 'text-amber-800' :
                     sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-800' :
                     'text-blue-800'
                   }`}>
                     {sendProgress.status === 'sending' && 'Sending Campaign...'}
-                    {sendProgress.status === 'complete' && 'Campaign Sent Successfully'}
+                    {sendProgress.status === 'complete' && (sendProgress.totalFailed > 0 ? `Campaign Sent with ${sendProgress.totalFailed} Failures` : 'Campaign Sent Successfully')}
+                    {sendProgress.status === 'quota_exhausted' && 'Daily Sending Quota Reached'}
                     {sendProgress.status === 'error' && 'Campaign Failed'}
                     {sendProgress.status === 'timeout' && 'Request Timed Out'}
                   </span>
                 </div>
-                {(sendProgress.status === 'complete' || sendProgress.status === 'error' || sendProgress.status === 'timeout') && (
+                {(sendProgress.status === 'complete' || sendProgress.status === 'error' || sendProgress.status === 'timeout' || sendProgress.status === 'quota_exhausted') && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1059,6 +1108,7 @@ export default function CampaignDetailPage() {
               <div className="flex items-center gap-4 text-sm mb-3">
                 <span className={
                   sendProgress.status === 'complete' ? 'text-green-700' :
+                  sendProgress.status === 'quota_exhausted' ? 'text-amber-700' :
                   sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-700' :
                   'text-blue-700'
                 }>
@@ -1078,6 +1128,7 @@ export default function CampaignDetailPage() {
                 <div
                   className={`h-full rounded-full transition-all duration-300 ease-out ${
                     sendProgress.status === 'complete' ? 'bg-green-500' :
+                    sendProgress.status === 'quota_exhausted' ? 'bg-amber-500' :
                     sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'bg-red-500' :
                     'bg-blue-500'
                   }`}
@@ -1114,7 +1165,12 @@ export default function CampaignDetailPage() {
               )}
               {sendProgress.status === 'complete' && sendProgress.totalFailed > 0 && (
                 <div className="mt-3 text-sm text-amber-700">
-                  Campaign completed with {sendProgress.totalFailed} failed deliveries. Check the errors below for details.
+                  Campaign completed with {sendProgress.totalFailed} failed deliveries. Check the errors above for details.
+                </div>
+              )}
+              {sendProgress.status === 'quota_exhausted' && (
+                <div className="mt-3 text-sm text-amber-700">
+                  Your Resend daily sending quota has been reached. {sendProgress.totalSent - sendProgress.totalFailed} emails were sent successfully. The remaining {sendProgress.remaining} emails can be sent once your quota resets (usually next day). Use the "Resume Sending" button to continue.
                 </div>
               )}
             </div>

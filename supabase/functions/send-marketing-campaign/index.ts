@@ -36,8 +36,9 @@ function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: s
   );
 }
 
-const BATCH_SIZE = 10;
-const DELAY_BETWEEN_EMAILS_MS = 200;
+const BATCH_SIZE = 5;
+const DELAY_BETWEEN_EMAILS_MS = 300;
+const MAX_RETRIES_ON_RATE_LIMIT = 3;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -198,6 +199,7 @@ Deno.serve(async (req: Request) => {
 
     let sentCount = 0;
     let failedCount = 0;
+    let quotaExhausted = false;
     const errors: string[] = [];
 
     for (let i = 0; i < recipients.length; i++) {
@@ -277,29 +279,54 @@ Deno.serve(async (req: Request) => {
           .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
           .replace(/\[([^\]]+)\]\(#\)/g, '$1');
 
-        const resendResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${emailSettings.resend_api_key}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
-            to: [recipient.email],
-            subject: campaign.email_templates.subject,
-            html: emailHtml,
-            text: plainTextBody + `\n\nUnsubscribe: ${unsubscribeUrl}`,
+        let resendResponse: Response | null = null;
+        let resendResult: any = null;
+        let retryCount = 0;
+
+        while (retryCount <= MAX_RETRIES_ON_RATE_LIMIT) {
+          resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
             headers: {
-              "List-Unsubscribe": `<${unsubscribeUrl}>`,
-              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              "Authorization": `Bearer ${emailSettings.resend_api_key}`,
+              "Content-Type": "application/json",
             },
-          }),
-        });
+            body: JSON.stringify({
+              from: `${emailSettings.from_name} <${emailSettings.from_email}>`,
+              to: [recipient.email],
+              subject: campaign.email_templates.subject,
+              html: emailHtml,
+              text: plainTextBody + `\n\nUnsubscribe: ${unsubscribeUrl}`,
+              headers: {
+                "List-Unsubscribe": `<${unsubscribeUrl}>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              },
+            }),
+          });
 
-        const resendResult = await resendResponse.json();
+          resendResult = await resendResponse.json();
 
-        if (!resendResponse.ok) {
-          throw new Error(resendResult.message || `Resend API error: ${resendResponse.status}`);
+          if (resendResponse.status === 429) {
+            retryCount++;
+            if (retryCount <= MAX_RETRIES_ON_RATE_LIMIT) {
+              await delay(2000 * retryCount);
+              continue;
+            }
+          }
+          break;
+        }
+
+        if (!resendResponse!.ok) {
+          const errorMsg = resendResult?.message || `Resend API error: ${resendResponse!.status}`;
+          const isQuotaError = errorMsg.toLowerCase().includes('daily') && errorMsg.toLowerCase().includes('quota');
+          const isRateLimitError = resendResponse!.status === 429;
+
+          if (isQuotaError || isRateLimitError) {
+            errors.push(`Stopped: ${errorMsg}`);
+            quotaExhausted = true;
+            break;
+          }
+
+          throw new Error(errorMsg);
         }
 
         const resendMessageId = resendResult.id || null;
@@ -338,9 +365,14 @@ Deno.serve(async (req: Request) => {
 
     const processedCount = sentCount + failedCount;
     const remainingAfterBatch = (remainingCount || 0) - processedCount;
-    const complete = remainingAfterBatch <= 0;
+    const complete = !quotaExhausted && remainingAfterBatch <= 0;
 
-    if (complete) {
+    if (quotaExhausted) {
+      await supabase
+        .from("marketing_campaigns")
+        .update({ status: "sending" })
+        .eq("id", campaignId);
+    } else if (complete) {
       await supabase
         .from("marketing_campaigns")
         .update({
@@ -357,6 +389,7 @@ Deno.serve(async (req: Request) => {
         remaining: remainingAfterBatch,
         complete,
         failedCount,
+        quotaExhausted,
         errors: errors.length > 0 ? errors : undefined,
       }),
       {
