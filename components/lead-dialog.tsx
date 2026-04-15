@@ -59,6 +59,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
   const [notesRefresh, setNotesRefresh] = useState(0);
   const [activeTab, setActiveTab] = useState('details');
   const [proposalCourses, setProposalCourses] = useState<ProposalCourse[]>([]);
+  const [bookingRefGenerated, setBookingRefGenerated] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     company_name: '',
@@ -93,6 +94,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
     if (!open) return;
 
     if (lead) {
+      setBookingRefGenerated(!!lead.booking_reference);
       setFormData({
         name: lead.name || '',
         company_name: lead.company_name || '',
@@ -119,6 +121,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       setPreviousStatus(lead.status || 'new');
       loadProposalCourses(lead.id);
     } else {
+      setBookingRefGenerated(false);
       setFormData({
         name: '',
         company_name: '',
@@ -146,6 +149,55 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       setProposalCourses([]);
     }
   }, [lead, userProfile]);
+
+  const getInitials = (fullName: string): string => {
+    const parts = fullName.trim().split(/\s+/);
+    return parts.map(p => p.charAt(0).toUpperCase()).join('');
+  };
+
+  const generateNextBookingReference = async () => {
+    if (!userProfile?.full_name) return;
+
+    const initials = getInitials(userProfile.full_name);
+    if (!initials) return;
+
+    try {
+      const { data: existingRefs } = await supabase
+        .from('leads')
+        .select('booking_reference')
+        .like('booking_reference', `${initials}%`);
+
+      let maxNum = 0;
+      const pattern = new RegExp(`^${initials}(\\d+)$`);
+
+      (existingRefs || []).forEach(row => {
+        if (row.booking_reference) {
+          const match = row.booking_reference.match(pattern);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxNum) maxNum = num;
+          }
+        }
+      });
+
+      const nextNum = (maxNum + 1).toString().padStart(4, '0');
+      const newRef = `${initials}${nextNum}`;
+
+      setFormData(prev => ({ ...prev, booking_reference: newRef }));
+      setBookingRefGenerated(true);
+    } catch (error) {
+      console.error('Failed to generate booking reference:', error);
+    }
+  };
+
+  useEffect(() => {
+    const isProposalOrWon = formData.status === 'proposal' || formData.status === 'won';
+    const onProposalTab = activeTab === 'proposal';
+
+    if (isProposalOrWon && onProposalTab && !formData.booking_reference && !bookingRefGenerated) {
+      generateNextBookingReference();
+    }
+  }, [activeTab, formData.status, formData.booking_reference, bookingRefGenerated]);
 
   const loadUsers = async () => {
     const { data } = await supabase
