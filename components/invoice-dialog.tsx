@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader as Loader2 } from 'lucide-react';
 
 interface InvoiceDialogProps {
   open: boolean;
@@ -45,21 +45,24 @@ export function InvoiceDialog({ open, onClose, leadId, leadName, leadEmail }: In
           leads(email, name)
         `)
         .eq('lead_id', leadId)
-        .maybeSingle();
+        .order('signed_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      if (data) {
-        setBookingForm(data);
-        const isDeferred = data.invoice_number === 'DEFERRED';
-        const isStripe = data.payment_type === 'stripe';
-        setInvoiceLater(isDeferred);
-        setInvoiceSent(data.invoice_sent || false);
-        setInvoiceNumber(isDeferred || isStripe ? '' : (data.invoice_number || ''));
-        setPaymentType(isStripe ? 'stripe' : 'invoice');
-        setPaymentLink(data.payment_link || '');
+      const form = data?.find(f => f.status === 'signed') || data?.[0] || null;
 
-        const email = data.form_data?.contact_email || data.leads?.email || leadEmail || '';
+      if (form) {
+        setBookingForm(form);
+        const isDeferred = form.invoice_number === 'DEFERRED';
+        const isStripe = form.payment_type === 'stripe';
+        setInvoiceLater(isDeferred);
+        setInvoiceSent(form.invoice_sent || false);
+        setInvoiceNumber(isDeferred || isStripe ? '' : (form.invoice_number || ''));
+        setPaymentType(isStripe ? 'stripe' : 'invoice');
+        setPaymentLink(form.payment_link || '');
+
+        const email = form.form_data?.contact_email || form.leads?.email || leadEmail || '';
         setClientEmail(email);
       }
     } catch (error: any) {
@@ -84,15 +87,7 @@ export function InvoiceDialog({ open, onClose, leadId, leadName, leadEmail }: In
     setLoading(true);
 
     try {
-      const { data: existingForm, error: checkError } = await supabase
-        .from('booking_forms')
-        .select('id')
-        .eq('lead_id', leadId)
-        .maybeSingle();
-
-      if (checkError) throw checkError;
-
-      if (!existingForm) {
+      if (!bookingForm?.id) {
         toast.error('No booking form found for this lead. Please send a booking form first.');
         setLoading(false);
         return;
@@ -105,7 +100,7 @@ export function InvoiceDialog({ open, onClose, leadId, leadName, leadEmail }: In
           invoice_number: invoiceLater ? 'DEFERRED' : invoiceNumber.trim(),
           payment_type: 'invoice',
         })
-        .eq('lead_id', leadId)
+        .eq('id', bookingForm.id)
         .select();
 
       if (error) throw error;
@@ -174,7 +169,7 @@ export function InvoiceDialog({ open, onClose, leadId, leadName, leadEmail }: In
           invoice_sent: true,
           invoice_number: 'STRIPE',
         })
-        .eq('lead_id', leadId);
+        .eq('id', bookingForm.id);
 
       if (updateError) throw updateError;
 
