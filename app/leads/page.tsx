@@ -120,6 +120,8 @@ export default function LeadsPage() {
 
           if (updatedLead.status === 'won' && oldLead.status !== 'won') {
             setShowCelebration(true);
+            loadBookingForms();
+            loadLeadBookings();
           }
         }
       )
