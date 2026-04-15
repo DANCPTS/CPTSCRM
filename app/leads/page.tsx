@@ -448,8 +448,10 @@ export default function LeadsPage() {
       }
 
       await loadBookingForms();
-      toast.success('Booking form created - opening preview...');
-      window.open(`/booking-form/${token}`, '_blank');
+      const formUrl = `${window.location.origin}/booking-form/${token}`;
+      await navigator.clipboard.writeText(formUrl);
+      toast.success('Booking form created! Link copied to clipboard.');
+      window.location.href = `/booking-form/${token}`;
     } catch (error: any) {
       toast.error('Failed to create booking form');
       console.error(error);
