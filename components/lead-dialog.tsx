@@ -180,7 +180,7 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
         }
       });
 
-      const nextNum = (maxNum + 1).toString().padStart(4, '0');
+      const nextNum = (maxNum + 1).toString().padStart(5, '0');
       const newRef = `${initials}${nextNum}`;
 
       setFormData(prev => ({ ...prev, booking_reference: newRef }));
