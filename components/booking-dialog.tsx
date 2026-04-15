@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Combobox } from '@/components/ui/combobox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { UserPlus, Users, User, TriangleAlert as AlertTriangle, Search, Copy, ExternalLink, Calendar } from 'lucide-react';
+import { UserPlus, Users, User, TriangleAlert as AlertTriangle, Search, Calendar } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 interface BookingDialogProps {
@@ -26,11 +26,13 @@ interface BookingDialogProps {
     companyName?: string;
     courseName?: string;
     courseDates?: string;
+    courseVenue?: string;
     numberOfDelegates?: number;
     invoiceNumber?: string;
     invoiceSent?: boolean;
     candidateId?: string;
     bookingReference?: string;
+    amount?: string;
   };
 }
 
@@ -42,9 +44,6 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
   const [companies, setCompanies] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [courseRuns, setCourseRuns] = useState<any[]>([]);
-  const [filteredCourseRuns, setFilteredCourseRuns] = useState<any[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<any[]>([]);
   const [duplicateWarnings, setDuplicateWarnings] = useState<any[]>([]);
   const [preSearchQuery, setPreSearchQuery] = useState('');
@@ -55,9 +54,9 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     contact_id: '',
     company_id: '',
     candidate_id: '',
-    course_id: '',
-    course_run_id: '',
-    accreditation: '',
+    course_name: '',
+    course_dates: '',
+    course_venue: '',
     status: 'reserved',
     amount: '',
     invoice_no: '',
@@ -81,24 +80,6 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     { value: '10:30', label: '10:30 AM' },
     { value: '11:00', label: '11:00 AM' },
   ];
-
-  const [isOtherCourse, setIsOtherCourse] = useState(false);
-  const [newCourseData, setNewCourseData] = useState({
-    title: '',
-    code: '',
-  });
-
-  const [isOtherRun, setIsOtherRun] = useState(false);
-  const [newRunData, setNewRunData] = useState({
-    start_date: '',
-    end_date: '',
-    location: '',
-    max_participants: 12,
-  });
-
-  const [availableAccreditations, setAvailableAccreditations] = useState<any[]>([]);
-  const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
-  const [confirmedOverlap, setConfirmedOverlap] = useState(false);
 
   const [newContactData, setNewContactData] = useState({
     first_name: '',
@@ -128,10 +109,21 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
   const prefillFormData = async () => {
     if (!prefillData) return;
 
+    if (prefillData.courseName) {
+      setBookingData(prev => ({ ...prev, course_name: prefillData.courseName || '' }));
+    }
+    if (prefillData.courseDates) {
+      setBookingData(prev => ({ ...prev, course_dates: prefillData.courseDates || '' }));
+    }
+    if (prefillData.courseVenue) {
+      setBookingData(prev => ({ ...prev, course_venue: prefillData.courseVenue || '' }));
+    }
+    if (prefillData.amount) {
+      setBookingData(prev => ({ ...prev, amount: prefillData.amount || '' }));
+    }
     if (prefillData.invoiceNumber) {
       setBookingData(prev => ({ ...prev, invoice_no: prefillData.invoiceNumber || '' }));
     }
-
     if (prefillData.bookingReference) {
       setBookingData(prev => ({ ...prev, booking_reference: prefillData.bookingReference || '' }));
     }
@@ -263,82 +255,25 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     }
   }, [bookingData.company_id, contacts]);
 
-  useEffect(() => {
-    if (bookingData.course_id) {
-      const filtered = courseRuns.filter(r => r.course_id === bookingData.course_id);
-      setFilteredCourseRuns(filtered);
-      setBookingData(prev => ({ ...prev, course_run_id: '' }));
-    } else {
-      setFilteredCourseRuns([]);
-    }
-  }, [bookingData.course_id, courseRuns]);
-
-  useEffect(() => {
-    if (bookingData.course_run_id) {
-      loadAccreditationsForCourse();
-    }
-  }, [bookingData.course_run_id]);
-
   const loadData = async () => {
     try {
-      const [companiesRes, contactsRes, candidatesRes, coursesRes, runsRes] = await Promise.all([
+      const [companiesRes, contactsRes, candidatesRes] = await Promise.all([
         supabase.from('companies').select('id, name').order('name'),
         supabase.from('contacts').select('id, first_name, last_name, email, phone, company_id, companies(name)').order('last_name'),
         supabase.from('candidates').select('id, first_name, last_name, email, phone').eq('status', 'active').order('last_name'),
-        supabase.from('courses').select('id, title').order('title'),
-        supabase
-          .from('course_runs')
-          .select('id, start_date, end_date, location, course_id, courses(id, title)')
-          .gte('start_date', new Date().toISOString().split('T')[0])
-          .order('start_date'),
       ]);
 
       if (companiesRes.error) throw companiesRes.error;
       if (contactsRes.error) throw contactsRes.error;
       if (candidatesRes.error) throw candidatesRes.error;
-      if (coursesRes.error) throw coursesRes.error;
-      if (runsRes.error) throw runsRes.error;
 
       setCompanies(companiesRes.data || []);
       setContacts(contactsRes.data || []);
       setCandidates(candidatesRes.data || []);
-      setCourses(coursesRes.data || []);
-      setCourseRuns(runsRes.data || []);
     } catch (error: any) {
       console.error('Failed to load data:', error);
       toast.error('Failed to load data');
     }
-  };
-
-  const loadAccreditationsForCourse = async () => {
-    const selectedRun = courseRuns.find(r => r.id === bookingData.course_run_id);
-    if (!selectedRun?.course_id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('course_accreditation_pricing')
-        .select('*')
-        .eq('course_id', selectedRun.course_id);
-
-      if (error) throw error;
-
-      setAvailableAccreditations(data || []);
-
-      if (data && data.length > 0) {
-        setBookingData(prev => ({ ...prev, accreditation: data[0].accreditation, amount: data[0].price.toString() }));
-      }
-    } catch (error) {
-      console.error('Failed to load accreditations:', error);
-    }
-  };
-
-  const handleAccreditationChange = (accreditation: string) => {
-    const pricing = availableAccreditations.find(a => a.accreditation === accreditation);
-    setBookingData(prev => ({
-      ...prev,
-      accreditation,
-      amount: pricing ? pricing.price.toString() : prev.amount,
-    }));
   };
 
   useEffect(() => {
@@ -472,6 +407,12 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     setLoading(true);
 
     try {
+      if (!bookingData.course_name) {
+        toast.error('Please enter a course name');
+        setLoading(false);
+        return;
+      }
+
       let contactId = bookingData.contact_id;
       let companyId: string | null = bookingData.company_id;
 
@@ -540,12 +481,10 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
         contactId = contact.id;
       }
 
-      // Look up or create candidate by contact email
       let candidateId = null;
       if (clientType === 'existing' && bookingType === 'individual') {
         candidateId = bookingData.candidate_id;
       } else {
-        // Try to find or create candidate by contact email
         const { data: contact } = await supabase
           .from('contacts')
           .select('email, first_name, last_name, phone')
@@ -562,7 +501,6 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
           if (candidate) {
             candidateId = candidate.id;
           } else {
-            // Create new candidate
             const { data: newCandidate, error: candidateError } = await supabase
               .from('candidates')
               .insert([{
@@ -581,130 +519,6 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
         }
       }
 
-      let courseId = bookingData.course_id;
-
-      if (isOtherCourse) {
-        if (!newCourseData.title) {
-          toast.error('Please enter a course name');
-          setLoading(false);
-          return;
-        }
-
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData.user) {
-          toast.error('You must be logged in');
-          setLoading(false);
-          return;
-        }
-
-        const { data: newCourse, error: courseError } = await supabase
-          .from('courses')
-          .insert([{
-            title: newCourseData.title,
-            code: newCourseData.code || newCourseData.title.substring(0, 10).toUpperCase(),
-            description: '',
-            duration_days: 1,
-          }])
-          .select()
-          .single();
-
-        if (courseError) throw courseError;
-        courseId = newCourse.id;
-      }
-
-      let courseRunId = bookingData.course_run_id;
-
-      if (isOtherRun) {
-        if (!newRunData.start_date || !newRunData.location) {
-          toast.error('Please fill in all required fields for the new course run');
-          setLoading(false);
-          return;
-        }
-
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData.user) {
-          toast.error('You must be logged in');
-          setLoading(false);
-          return;
-        }
-
-        const { data: newRun, error: runError } = await supabase
-          .from('course_runs')
-          .insert([{
-            course_id: courseId,
-            start_date: newRunData.start_date,
-            end_date: newRunData.end_date && newRunData.end_date.trim() !== '' ? newRunData.end_date : newRunData.start_date,
-            location: newRunData.location,
-            seats_total: newRunData.max_participants,
-            seats_booked: 0,
-          }])
-          .select()
-          .single();
-
-        if (runError) throw runError;
-        courseRunId = newRun.id;
-      }
-
-      let selectedRunStartDate: string;
-      let selectedRunEndDate: string;
-
-      if (isOtherRun) {
-        selectedRunStartDate = newRunData.start_date;
-        selectedRunEndDate = newRunData.end_date && newRunData.end_date.trim() !== '' ? newRunData.end_date : newRunData.start_date;
-      } else {
-        const selectedRun = courseRuns.find(r => r.id === courseRunId);
-        if (selectedRun) {
-          selectedRunStartDate = selectedRun.start_date;
-          selectedRunEndDate = selectedRun.end_date;
-        } else {
-          const { data: runData } = await supabase
-            .from('course_runs')
-            .select('start_date, end_date')
-            .eq('id', courseRunId)
-            .maybeSingle();
-          selectedRunStartDate = runData?.start_date;
-          selectedRunEndDate = runData?.end_date;
-        }
-      }
-
-      if (candidateId && selectedRunStartDate && selectedRunEndDate && !confirmedOverlap) {
-        const { data: existingBookings } = await supabase
-          .from('bookings')
-          .select(`
-            id,
-            status,
-            course_run_id,
-            course_runs(start_date, end_date, courses(title))
-          `)
-          .eq('candidate_id', candidateId)
-          .neq('status', 'cancelled');
-
-        if (existingBookings && existingBookings.length > 0) {
-          const newStart = new Date(selectedRunStartDate);
-          const newEnd = new Date(selectedRunEndDate);
-
-          for (const booking of existingBookings) {
-            const run = booking.course_runs as any;
-            if (!run?.start_date || !run?.end_date) continue;
-
-            const existingStart = new Date(run.start_date);
-            const existingEnd = new Date(run.end_date);
-
-            const hasOverlap = newStart <= existingEnd && newEnd >= existingStart;
-
-            if (hasOverlap) {
-              const courseName = run.courses?.title || 'another course';
-              const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-              setOverlapWarning(
-                `This candidate is already booked on "${courseName}" (${formatDate(existingStart)} - ${formatDate(existingEnd)}). Dates overlap with the selected course.`
-              );
-              setLoading(false);
-              return;
-            }
-          }
-        }
-      }
-
       const netAmount = parseFloat(bookingData.amount) || 0;
       const vatAmount = bookingData.vat_exempt ? 0 : netAmount * 0.20;
 
@@ -715,7 +529,10 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
             contact_id: contactId,
             company_id: companyId,
             candidate_id: candidateId,
-            course_run_id: courseRunId,
+            course_name: bookingData.course_name,
+            course_dates: bookingData.course_dates || null,
+            course_venue: bookingData.course_venue || null,
+            course_run_id: null,
             status: bookingData.status,
             amount: netAmount,
             net_amount: netAmount,
@@ -750,9 +567,9 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
       contact_id: '',
       company_id: '',
       candidate_id: '',
-      course_id: '',
-      course_run_id: '',
-      accreditation: '',
+      course_name: '',
+      course_dates: '',
+      course_venue: '',
       status: 'reserved',
       amount: '',
       invoice_no: '',
@@ -776,23 +593,9 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
       city: '',
       postcode: '',
     });
-    setIsOtherCourse(false);
-    setNewCourseData({
-      title: '',
-      code: '',
-    });
-    setIsOtherRun(false);
-    setNewRunData({
-      start_date: '',
-      end_date: '',
-      location: '',
-      max_participants: 12,
-    });
     setClientType('existing');
     setIsIndividual(false);
     setBookingType('company');
-    setOverlapWarning(null);
-    setConfirmedOverlap(false);
     setHasAutoFilledFromLead(false);
   };
 
@@ -910,7 +713,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                   variant={bookingType === 'company' ? 'default' : 'outline'}
                   onClick={() => {
                     setBookingType('company');
-                    setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
+                    setBookingData(prev => ({ ...prev, candidate_id: '', contact_id: '', company_id: '' }));
                   }}
                   className="flex-1"
                 >
@@ -922,7 +725,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                   variant={bookingType === 'individual' ? 'default' : 'outline'}
                   onClick={() => {
                     setBookingType('individual');
-                    setBookingData({ ...bookingData, candidate_id: '', contact_id: '', company_id: '' });
+                    setBookingData(prev => ({ ...prev, candidate_id: '', contact_id: '', company_id: '' }));
                   }}
                   className="flex-1"
                 >
@@ -945,7 +748,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                       }))
                     ]}
                     value={bookingData.company_id}
-                    onValueChange={(value) => setBookingData({ ...bookingData, company_id: value, contact_id: '' })}
+                    onValueChange={(value) => setBookingData(prev => ({ ...prev, company_id: value, contact_id: '' }))}
                     placeholder="Filter by company or view all..."
                     searchPlaceholder="Type to search companies..."
                     emptyMessage="No companies found."
@@ -965,7 +768,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                       tertiary: contact.phone || contact.companies?.name || undefined,
                     }))}
                     value={bookingData.contact_id}
-                    onValueChange={(value) => setBookingData({ ...bookingData, contact_id: value })}
+                    onValueChange={(value) => setBookingData(prev => ({ ...prev, contact_id: value }))}
                     placeholder="Search and select contact..."
                     searchPlaceholder="Type to search contacts..."
                     emptyMessage="No contacts found."
@@ -983,7 +786,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
                     tertiary: candidate.phone || undefined,
                   }))}
                   value={bookingData.candidate_id}
-                  onValueChange={(value) => setBookingData({ ...bookingData, candidate_id: value })}
+                  onValueChange={(value) => setBookingData(prev => ({ ...prev, candidate_id: value }))}
                   placeholder="Search and select candidate..."
                   searchPlaceholder="Type to search candidates..."
                   emptyMessage="No candidates found."
@@ -1219,7 +1022,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
               {prefillData.courseName ? (
                 <div className="font-semibold text-amber-900">Course: {prefillData.courseName}</div>
               ) : (
-                <div className="font-semibold text-amber-900">Course: Not specified - select below</div>
+                <div className="font-semibold text-amber-900">Course: Not specified - enter below</div>
               )}
               {prefillData.courseDates && (
                 <div className="text-sm text-amber-800">Dates: {prefillData.courseDates}</div>
@@ -1241,350 +1044,190 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
           {renderClientSection()}
 
           <div className="border-t pt-4 space-y-4">
-            <h4 className="font-medium">Booking Details</h4>
+            <h4 className="font-medium">Course Details</h4>
 
             <div className="space-y-2">
-              <Label>Course Type *</Label>
-              <Select
-                value={isOtherCourse ? 'other' : bookingData.course_id}
-                onValueChange={(value) => {
-                  if (value === 'other') {
-                    setIsOtherCourse(true);
-                    setBookingData({ ...bookingData, course_id: '' });
-                  } else {
-                    setIsOtherCourse(false);
-                    setBookingData({ ...bookingData, course_id: value });
-                  }
-                }}
+              <Label htmlFor="course_name">Course Name *</Label>
+              <Input
+                id="course_name"
+                value={bookingData.course_name}
+                onChange={(e) => setBookingData(prev => ({ ...prev, course_name: e.target.value }))}
+                placeholder="e.g., CPCS A17 Telehandler"
                 required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select course type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map(course => (
-                    <SelectItem key={course.id} value={course.id}>
-                      {course.title}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="other">
-                    Other (Create new course)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              />
             </div>
 
-            {isOtherCourse && (
-              <div className="space-y-4 border rounded-lg p-4 bg-slate-50">
-                <p className="text-sm text-slate-600">Create a new course type</p>
-
-                <div className="space-y-2">
-                  <Label>Course Name *</Label>
-                  <Input
-                    value={newCourseData.title}
-                    onChange={(e) => setNewCourseData({ ...newCourseData, title: e.target.value })}
-                    placeholder="e.g., Telehandler Assessment"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Course Code</Label>
-                  <Input
-                    value={newCourseData.code}
-                    onChange={(e) => setNewCourseData({ ...newCourseData, code: e.target.value })}
-                    placeholder="e.g., TH-ASS (optional)"
-                  />
-                </div>
-              </div>
-            )}
-
-            {(bookingData.course_id || isOtherCourse) && (
-              <>
-                <div className="space-y-2">
-                  <Label>Available Dates *</Label>
-                  <Select
-                    value={isOtherRun ? 'other' : bookingData.course_run_id}
-                    onValueChange={(value) => {
-                      if (value === 'other') {
-                        setIsOtherRun(true);
-                        setBookingData({ ...bookingData, course_run_id: '' });
-                      } else {
-                        setIsOtherRun(false);
-                        setBookingData({ ...bookingData, course_run_id: value });
-                      }
-                    }}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select date..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredCourseRuns.length > 0 && (
-                        filteredCourseRuns.map(run => {
-                          const startDate = new Date(run.start_date);
-                          const endDate = new Date(run.end_date);
-                          const startDay = startDate.getDate();
-                          const endDay = endDate.getDate();
-                          const month = startDate.toLocaleDateString('en-GB', { month: 'short' });
-                          const year = startDate.getFullYear();
-
-                          return (
-                            <SelectItem key={run.id} value={run.id}>
-                              {startDay}{startDay === endDay ? '' : ` - ${endDay}`} {month} {year} - {run.location}
-                            </SelectItem>
-                          );
-                        })
-                      )}
-                      <SelectItem value="other">
-                        Other (Create new date)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {isOtherRun && (
-                  <div className="space-y-4 border rounded-lg p-4 bg-slate-50">
-                    <p className="text-sm text-slate-600">Create a new course run for this booking</p>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Start Date *</Label>
-                        <Input
-                          type="date"
-                          value={newRunData.start_date}
-                          onChange={(e) => setNewRunData({ ...newRunData, start_date: e.target.value, end_date: e.target.value })}
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>End Date *</Label>
-                        <Input
-                          type="date"
-                          value={newRunData.end_date}
-                          onChange={(e) => setNewRunData({ ...newRunData, end_date: e.target.value })}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Location *</Label>
-                      <Input
-                        value={newRunData.location}
-                        onChange={(e) => setNewRunData({ ...newRunData, location: e.target.value })}
-                        placeholder="e.g., Client Site, Your Training Centre"
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Max Participants</Label>
-                      <Input
-                        type="number"
-                        value={newRunData.max_participants}
-                        onChange={(e) => setNewRunData({ ...newRunData, max_participants: parseInt(e.target.value) || 12 })}
-                        min="1"
-                      />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {availableAccreditations.length > 0 && (
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Accreditation *</Label>
-                <Select
-                  value={bookingData.accreditation}
-                  onValueChange={handleAccreditationChange}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select accreditation..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableAccreditations.map(accred => (
-                      <SelectItem key={accred.accreditation} value={accred.accreditation}>
-                        {accred.accreditation} - £{accred.price.toFixed(2)} + VAT
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
-                <div>
-                  <Label htmlFor="vat_exempt" className="font-medium">VAT Exempt (Dubai Account)</Label>
-                  <p className="text-xs text-slate-500 mt-0.5">Enable for bookings through the Dubai account</p>
-                </div>
-                <Switch
-                  id="vat_exempt"
-                  checked={bookingData.vat_exempt}
-                  onCheckedChange={(checked) => setBookingData({ ...bookingData, vat_exempt: checked })}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Net Amount *</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    value={bookingData.amount}
-                    onChange={(e) => setBookingData({ ...bookingData, amount: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={bookingData.status}
-                    onValueChange={(value) => setBookingData({ ...bookingData, status: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="reserved">Reserved</SelectItem>
-                      <SelectItem value="confirmed">Confirmed</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="start_time">Start Time</Label>
-                <Select
-                  value={bookingData.start_time}
-                  onValueChange={(value) => setBookingData({ ...bookingData, start_time: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select start time..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {startTimeOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-slate-500">Course start time for joining instructions</p>
-              </div>
-
-              {bookingData.amount && (
-                <div className="p-3 bg-slate-50 rounded-lg border">
-                  <div className="text-sm text-slate-600 mb-2">Price Breakdown</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>Net Amount:</span>
-                      <span className="font-medium">£{parseFloat(bookingData.amount).toFixed(2)}</span>
-                    </div>
-                    {!bookingData.vat_exempt && (
-                      <div className="flex justify-between text-sm">
-                        <span>VAT (20%):</span>
-                        <span className="font-medium">£{(parseFloat(bookingData.amount) * 0.20).toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm font-semibold border-t pt-1 mt-1">
-                      <span>Total:</span>
-                      <span>
-                        £{bookingData.vat_exempt
-                          ? parseFloat(bookingData.amount).toFixed(2)
-                          : (parseFloat(bookingData.amount) * 1.20).toFixed(2)
-                        }
-                      </span>
-                    </div>
-                    {bookingData.vat_exempt && (
-                      <div className="text-xs text-green-600 mt-1">VAT Exempt</div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="booking_reference">Booking Reference</Label>
+                <Label htmlFor="course_dates">Course Dates</Label>
                 <Input
-                  id="booking_reference"
-                  value={bookingData.booking_reference}
-                  onChange={(e) => setBookingData({ ...bookingData, booking_reference: e.target.value })}
-                  placeholder="e.g., ABC-001, PO12345"
+                  id="course_dates"
+                  value={bookingData.course_dates}
+                  onChange={(e) => setBookingData(prev => ({ ...prev, course_dates: e.target.value }))}
+                  placeholder="e.g., 15-17 Jan 2025"
                 />
-                <p className="text-xs text-slate-500">Your reference number for this booking</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="invoice_no">Invoice No</Label>
-                  <Input
-                    id="invoice_no"
-                    value={bookingData.invoice_no}
-                    onChange={(e) => setBookingData({ ...bookingData, invoice_no: e.target.value })}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="certificate_no">Certificate No</Label>
-                  <Input
-                    id="certificate_no"
-                    value={bookingData.certificate_no}
-                    onChange={(e) => setBookingData({ ...bookingData, certificate_no: e.target.value })}
-                  />
-                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="payment_link">Stripe Payment Link</Label>
+                <Label htmlFor="course_venue">Venue / Location</Label>
                 <Input
-                  id="payment_link"
-                  type="url"
-                  placeholder="https://buy.stripe.com/..."
-                  value={bookingData.payment_link}
-                  onChange={(e) => setBookingData({ ...bookingData, payment_link: e.target.value })}
+                  id="course_venue"
+                  value={bookingData.course_venue}
+                  onChange={(e) => setBookingData(prev => ({ ...prev, course_venue: e.target.value }))}
+                  placeholder="e.g., Client Site, Birmingham"
                 />
-                <p className="text-xs text-slate-500">Paste the payment link you created in Stripe</p>
               </div>
             </div>
           </div>
 
-          {overlapWarning && (
-            <Alert className="border-amber-500 bg-amber-50">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-800">
-                <span className="font-medium">Date Overlap Warning:</span> {overlapWarning}
-              </AlertDescription>
-            </Alert>
-          )}
+          <div className="border-t pt-4 space-y-4">
+            <h4 className="font-medium">Pricing & Status</h4>
+
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+              <div>
+                <Label htmlFor="vat_exempt" className="font-medium">VAT Exempt (Dubai Account)</Label>
+                <p className="text-xs text-slate-500 mt-0.5">Enable for bookings through the Dubai account</p>
+              </div>
+              <Switch
+                id="vat_exempt"
+                checked={bookingData.vat_exempt}
+                onCheckedChange={(checked) => setBookingData(prev => ({ ...prev, vat_exempt: checked }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Net Amount *</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  value={bookingData.amount}
+                  onChange={(e) => setBookingData(prev => ({ ...prev, amount: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={bookingData.status}
+                  onValueChange={(value) => setBookingData(prev => ({ ...prev, status: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="reserved">Reserved</SelectItem>
+                    <SelectItem value="confirmed">Confirmed</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="start_time">Start Time</Label>
+              <Select
+                value={bookingData.start_time}
+                onValueChange={(value) => setBookingData(prev => ({ ...prev, start_time: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select start time..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {startTimeOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Course start time for joining instructions</p>
+            </div>
+
+            {bookingData.amount && (
+              <div className="p-3 bg-slate-50 rounded-lg border">
+                <div className="text-sm text-slate-600 mb-2">Price Breakdown</div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>Net Amount:</span>
+                    <span className="font-medium">£{parseFloat(bookingData.amount).toFixed(2)}</span>
+                  </div>
+                  {!bookingData.vat_exempt && (
+                    <div className="flex justify-between text-sm">
+                      <span>VAT (20%):</span>
+                      <span className="font-medium">£{(parseFloat(bookingData.amount) * 0.20).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm font-semibold border-t pt-1 mt-1">
+                    <span>Total:</span>
+                    <span>
+                      £{bookingData.vat_exempt
+                        ? parseFloat(bookingData.amount).toFixed(2)
+                        : (parseFloat(bookingData.amount) * 1.20).toFixed(2)
+                      }
+                    </span>
+                  </div>
+                  {bookingData.vat_exempt && (
+                    <div className="text-xs text-green-600 mt-1">VAT Exempt</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="booking_reference">Booking Reference</Label>
+              <Input
+                id="booking_reference"
+                value={bookingData.booking_reference}
+                onChange={(e) => setBookingData(prev => ({ ...prev, booking_reference: e.target.value }))}
+                placeholder="e.g., ABC-001, PO12345"
+              />
+              <p className="text-xs text-slate-500">Your reference number for this booking</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="invoice_no">Invoice No</Label>
+                <Input
+                  id="invoice_no"
+                  value={bookingData.invoice_no}
+                  onChange={(e) => setBookingData(prev => ({ ...prev, invoice_no: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="certificate_no">Certificate No</Label>
+                <Input
+                  id="certificate_no"
+                  value={bookingData.certificate_no}
+                  onChange={(e) => setBookingData(prev => ({ ...prev, certificate_no: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_link">Stripe Payment Link</Label>
+              <Input
+                id="payment_link"
+                type="url"
+                placeholder="https://buy.stripe.com/..."
+                value={bookingData.payment_link}
+                onChange={(e) => setBookingData(prev => ({ ...prev, payment_link: e.target.value }))}
+              />
+              <p className="text-xs text-slate-500">Paste the payment link you created in Stripe</p>
+            </div>
+          </div>
 
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            {overlapWarning && !confirmedOverlap ? (
-              <Button
-                type="button"
-                variant="default"
-                className="bg-amber-600 hover:bg-amber-700"
-                onClick={() => {
-                  setConfirmedOverlap(true);
-                  setOverlapWarning(null);
-                }}
-              >
-                Proceed Anyway
-              </Button>
-            ) : (
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Creating...' : 'Create Booking'}
-              </Button>
-            )}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Creating...' : 'Create Booking'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -6,7 +6,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader2, ExternalLink, ChevronDown } from 'lucide-react';
+import { Plus, GripVertical, LayoutList, LayoutGrid, Mail, Search, Send, Eye, Calendar, FileText, SendHorizontal, Users, Loader as Loader2, ExternalLink, ChevronDown } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
@@ -1495,6 +1495,7 @@ export default function LeadsPage() {
           numberOfDelegates: selectedLeadForBooking.number_of_delegates,
           invoiceNumber: bookingForms[selectedLeadForBooking.id]?.invoice_number,
           invoiceSent: bookingForms[selectedLeadForBooking.id]?.invoice_sent,
+          bookingReference: selectedLeadForBooking.booking_reference || bookingForms[selectedLeadForBooking.id]?.booking_reference,
         } : undefined}
       />
 

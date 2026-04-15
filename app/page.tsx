@@ -3,14 +3,13 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getDashboardMetrics, getTasks, getCourseRuns, getLeads } from '@/lib/db-helpers';
+import { getDashboardMetrics, getTasks, getLeads } from '@/lib/db-helpers';
 import { useAuth } from '@/lib/auth-context';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Link from 'next/link';
-import { Calendar, CheckCircle2, TrendingUp, Users, Award, UserCheck, Phone, AlertCircle } from 'lucide-react';
-import { format, isToday, parseISO, isBefore, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
+import { TrendingUp, Users, Phone } from 'lucide-react';
+import { format, isToday, parseISO, isBefore, addDays } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
 export default function Home() {
@@ -19,10 +18,7 @@ export default function Home() {
   const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
   const [todayTasks, setTodayTasks] = useState<any[]>([]);
   const [next7DaysTasks, setNext7DaysTasks] = useState<any[]>([]);
-  const [upcomingRuns, setUpcomingRuns] = useState<any[]>([]);
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
-  const [weeklyAttendees, setWeeklyAttendees] = useState<any[]>([]);
-  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [nvqMetrics, setNvqMetrics] = useState({ overdue: 0, dueToday: 0, dueThisWeek: 0 });
 
@@ -32,10 +28,9 @@ export default function Home() {
 
   const loadDashboard = async () => {
     try {
-      const [metricsData, tasksData, runsData, leadsData] = await Promise.all([
+      const [metricsData, tasksData, leadsData] = await Promise.all([
         getDashboardMetrics(),
         getTasks(userProfile?.id),
-        getCourseRuns(),
         getLeads(),
       ]);
 
@@ -65,16 +60,9 @@ export default function Home() {
       setOverdueTasks(tasksOverdue);
       setTodayTasks(tasksDueToday);
       setNext7DaysTasks(tasksDueNext7Days);
-
-      const filteredRuns = runsData.filter((run: any) => {
-        const startDate = parseISO(run.start_date);
-        return isBefore(today, addDays(startDate, 1)) && isBefore(startDate, nextWeek);
-      });
-
-      setUpcomingRuns(filteredRuns);
       setRecentLeads(leadsData?.slice(0, 5) || []);
 
-      await Promise.all([loadWeeklyAttendees(), loadNvqMetrics()]);
+      await loadNvqMetrics();
     } catch (error) {
       console.error('Failed to load dashboard:', error);
     } finally {
@@ -116,67 +104,6 @@ export default function Home() {
     }
   };
 
-  const loadWeeklyAttendees = async () => {
-    try {
-      const today = new Date();
-      const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-
-      const { data: courseRuns, error } = await supabase
-        .from('course_runs')
-        .select(`
-          id,
-          start_date,
-          end_date,
-          location,
-          training_days,
-          test_days,
-          courses (
-            id,
-            title
-          ),
-          candidate_courses (
-            id,
-            candidates (
-              id,
-              first_name,
-              last_name,
-              email,
-              phone
-            )
-          )
-        `)
-        .gte('end_date', format(weekStart, 'yyyy-MM-dd'))
-        .lte('start_date', format(weekEnd, 'yyyy-MM-dd'));
-
-      if (error) throw error;
-
-      const attendees: any[] = [];
-      courseRuns?.forEach((run: any) => {
-        run.candidate_courses?.forEach((cc: any) => {
-          if (cc.candidates) {
-            attendees.push({
-              candidate: cc.candidates,
-              course: run.courses,
-              courseRun: {
-                id: run.id,
-                start_date: run.start_date,
-                end_date: run.end_date,
-                location: run.location,
-                training_days: run.training_days,
-                test_days: run.test_days
-              }
-            });
-          }
-        });
-      });
-
-      setWeeklyAttendees(attendees);
-    } catch (error) {
-      console.error('Failed to load weekly attendees:', error);
-    }
-  };
-
   return (
     <AppShell>
       <div className="p-8">
@@ -191,14 +118,14 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <div className="grid gap-6 md:grid-cols-5 mb-8">
+            <div className="grid gap-6 md:grid-cols-3 mb-8">
               <Card
-                className="md:col-span-5 border-l-4 border-l-purple-500 hover:shadow-lg transition-all"
+                className="md:col-span-3 border-l-4 border-l-blue-500 hover:shadow-lg transition-all"
               >
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg text-primary flex items-center justify-between">
                     Lead Source Performance
-                    <TrendingUp className="h-5 w-5 text-purple-600" />
+                    <TrendingUp className="h-5 w-5 text-blue-600" />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -218,7 +145,7 @@ export default function Home() {
                           <p className="text-xs text-muted-foreground">Won</p>
                         </div>
                         <div>
-                          <div className="text-2xl font-bold text-purple-600">{metrics?.emailLeads?.conversion || 0}%</div>
+                          <div className="text-2xl font-bold text-blue-600">{metrics?.emailLeads?.conversion || 0}%</div>
                           <p className="text-xs text-muted-foreground">Rate</p>
                         </div>
                       </div>
@@ -238,7 +165,7 @@ export default function Home() {
                           <p className="text-xs text-muted-foreground">Won</p>
                         </div>
                         <div>
-                          <div className="text-2xl font-bold text-purple-600">{metrics?.manualLeads?.conversion || 0}%</div>
+                          <div className="text-2xl font-bold text-blue-600">{metrics?.manualLeads?.conversion || 0}%</div>
                           <p className="text-xs text-muted-foreground">Rate</p>
                         </div>
                       </div>
@@ -248,7 +175,7 @@ export default function Home() {
               </Card>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-5 mb-8">
+            <div className="grid gap-6 md:grid-cols-3 mb-8">
               <Card className="border-l-4 border-l-accent hover:shadow-lg transition-all">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-semibold text-primary">Leads This Week</CardTitle>
@@ -259,22 +186,6 @@ export default function Home() {
                 <CardContent>
                   <div className="text-3xl font-bold text-primary">{metrics?.leadsThisWeek || 0}</div>
                   <p className="text-xs text-muted-foreground mt-1">New leads in the last 7 days</p>
-                </CardContent>
-              </Card>
-
-              <Card
-                className="border-l-4 border-l-blue-500 hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => setAttendanceDialogOpen(true)}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-semibold text-primary">This Week</CardTitle>
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <UserCheck className="h-5 w-5 text-blue-600" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-primary">{weeklyAttendees.length}</div>
-                  <p className="text-xs text-muted-foreground mt-1">Candidates attending courses</p>
                 </CardContent>
               </Card>
 
@@ -291,29 +202,16 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              <Card className="border-l-4 border-l-primary hover:shadow-lg transition-all">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-semibold text-primary">Seats Filled (30d)</CardTitle>
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-primary">{metrics?.seatsFilled}%</div>
-                  <p className="text-xs text-muted-foreground mt-1">Course capacity utilization</p>
-                </CardContent>
-              </Card>
-
               <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-all">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-semibold text-primary">Pass Rate</CardTitle>
+                  <CardTitle className="text-sm font-semibold text-primary">Total Bookings</CardTitle>
                   <div className="p-2 bg-green-100 rounded-lg">
-                    <Award className="h-5 w-5 text-green-600" />
+                    <TrendingUp className="h-5 w-5 text-green-600" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-primary">{metrics?.passRate}%</div>
-                  <p className="text-xs text-muted-foreground mt-1">Overall candidate success rate</p>
+                  <div className="text-3xl font-bold text-primary">{metrics?.totalBookings || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">All-time bookings created</p>
                 </CardContent>
               </Card>
             </div>
@@ -463,71 +361,34 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              <Card className="shadow-md hover:shadow-xl transition-shadow border-t-4 border-t-secondary flex flex-col">
+              <Card className="shadow-md hover:shadow-xl transition-shadow border-t-4 border-t-primary flex flex-col">
                 <CardHeader>
-                  <CardTitle className="text-primary">Upcoming Sessions</CardTitle>
-                  <CardDescription>Course runs in the next 7 days</CardDescription>
+                  <CardTitle className="text-primary">Recent Leads</CardTitle>
+                  <CardDescription>Latest leads added to the system</CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6 flex-1 flex flex-col">
                   <div className="flex-1">
-                    {upcomingRuns.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No upcoming sessions</p>
+                    {recentLeads.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No leads yet</p>
                     ) : (
                       <div className="space-y-3">
-                        {upcomingRuns.map((run: any) => (
+                        {recentLeads.map((lead: any) => (
                           <div
-                            key={run.id}
-                            className="flex items-start justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
+                            key={lead.id}
+                            className="flex items-center justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
                           >
                             <div className="flex-1">
-                              <p className="font-semibold text-sm text-primary">{run.courses?.title}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {format(parseISO(run.start_date), 'MMM d, yyyy')} • {run.location}
-                              </p>
+                              <p className="font-semibold text-sm text-primary">{lead.name}</p>
                               <p className="text-xs text-muted-foreground">
-                                {run.seats_booked}/{run.seats_total} seats booked
+                                {lead.company_name} {lead.email ? `\u2022 ${lead.email}` : ''}
                               </p>
                             </div>
-                            <div className="p-2 bg-secondary/10 rounded-lg">
-                              <Calendar className="h-5 w-5 text-secondary" />
-                            </div>
+                            <Badge className="bg-primary/10 text-primary border-primary/20">{lead.status}</Badge>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-                  <Button asChild className="w-full mt-4 bg-accent hover:bg-accent/90 text-accent-foreground shadow-md">
-                    <Link href="/runs">View All Runs</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="md:col-span-2 shadow-md hover:shadow-xl transition-shadow border-t-4 border-t-primary">
-                <CardHeader>
-                  <CardTitle className="text-primary">Recent Leads</CardTitle>
-                  <CardDescription>Latest leads added to the system</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  {recentLeads.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No leads yet</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {recentLeads.map((lead: any) => (
-                        <div
-                          key={lead.id}
-                          className="flex items-center justify-between rounded-lg border bg-muted/50 p-4 hover:bg-muted/70 transition-all"
-                        >
-                          <div className="flex-1">
-                            <p className="font-semibold text-sm text-primary">{lead.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {lead.company_name} • {lead.email}
-                            </p>
-                          </div>
-                          <Badge className="bg-primary/10 text-primary border-primary/20">{lead.status}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                   <Button asChild className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground shadow-md">
                     <Link href="/leads">View All Leads</Link>
                   </Button>
@@ -536,70 +397,6 @@ export default function Home() {
             </div>
           </>
         )}
-
-        <Dialog open={attendanceDialogOpen} onOpenChange={setAttendanceDialogOpen}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <UserCheck className="h-5 w-5" />
-                Weekly Attendance ({format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d')} - {format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'MMM d, yyyy')})
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-3">
-              {weeklyAttendees.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  No candidates attending courses this week
-                </div>
-              ) : (
-                weeklyAttendees.map((attendee, index) => (
-                  <Card key={index}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-primary">
-                              {attendee.candidate.first_name} {attendee.candidate.last_name}
-                            </h4>
-                            <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                              Attending
-                            </Badge>
-                          </div>
-                          <div className="space-y-1 text-sm text-slate-600">
-                            <p className="font-medium text-primary">
-                              {attendee.course?.title}
-                            </p>
-                            <p className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {format(parseISO(attendee.courseRun.start_date), 'MMM d')} - {format(parseISO(attendee.courseRun.end_date), 'MMM d, yyyy')}
-                            </p>
-                            {attendee.courseRun.location && (
-                              <p className="text-xs">📍 {attendee.courseRun.location}</p>
-                            )}
-                            {attendee.candidate.email && (
-                              <p className="text-xs">✉️ {attendee.candidate.email}</p>
-                            )}
-                            {attendee.candidate.phone && (
-                              <p className="text-xs">📞 {attendee.candidate.phone}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-
-            {weeklyAttendees.length > 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <Button asChild className="w-full">
-                  <Link href="/calendar">View Calendar</Link>
-                </Button>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
       </div>
     </AppShell>
   );

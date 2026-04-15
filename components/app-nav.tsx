@@ -5,24 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  UserCircle,
-  BookOpen,
-  Calendar,
-  CalendarDays,
-  ClipboardCheck,
-  ListTodo,
-  Settings,
-  LogOut,
-  GraduationCap,
-  Bell,
-  Mail,
-  UserCheck,
-  Award,
-} from 'lucide-react';
+import { LayoutDashboard, Users, Building2, CircleUser as UserCircle, BookOpen, ClipboardCheck, ListTodo, Settings, LogOut, GraduationCap, Bell, Mail, Award } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
@@ -41,10 +24,7 @@ const navItems = [
   { href: '/contacts', label: 'Contacts', icon: UserCircle },
   { href: '/candidates', label: 'Candidates', icon: GraduationCap },
   { href: '/courses', label: 'Courses', icon: BookOpen },
-  { href: '/runs', label: 'Runs', icon: Calendar },
-  { href: '/trainers', label: 'Trainers', icon: UserCheck },
   { href: '/bookings', label: 'Bookings', icon: ClipboardCheck },
-  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/marketing', label: 'Marketing', icon: Mail },
   { href: '/tasks', label: 'Tasks', icon: ListTodo },
   { href: '/nvq-reminders', label: 'NVQ Follow-ups', icon: Award, hasBadge: true },

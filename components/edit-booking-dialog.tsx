@@ -28,6 +28,9 @@ export function EditBookingDialog({ open, onClose, onSuccess, booking }: EditBoo
     certificate_no: '',
     payment_link: '',
     start_time: '08:00',
+    course_name: '',
+    course_dates: '',
+    course_venue: '',
   });
 
   const startTimeOptions = [
@@ -54,6 +57,9 @@ export function EditBookingDialog({ open, onClose, onSuccess, booking }: EditBoo
         certificate_no: booking.certificate_no || '',
         payment_link: booking.payment_link || '',
         start_time: booking.start_time || '08:00',
+        course_name: booking.course_name || booking.course_runs?.courses?.title || '',
+        course_dates: booking.course_dates || (booking.course_runs?.start_date ? format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy') : ''),
+        course_venue: booking.course_venue || booking.course_runs?.location || '',
       });
     }
   }, [booking, open]);
@@ -78,6 +84,9 @@ export function EditBookingDialog({ open, onClose, onSuccess, booking }: EditBoo
           certificate_no: formData.certificate_no || null,
           payment_link: formData.payment_link || null,
           start_time: formData.start_time,
+          course_name: formData.course_name || null,
+          course_dates: formData.course_dates || null,
+          course_venue: formData.course_venue || null,
         })
         .eq('id', booking.id);
 
@@ -118,17 +127,44 @@ export function EditBookingDialog({ open, onClose, onSuccess, booking }: EditBoo
             {booking.companies && (
               <p><span className="font-medium">Company:</span> {booking.companies.name}</p>
             )}
-            <p><span className="font-medium">Course:</span> {booking.course_runs?.courses?.title}</p>
-            <p>
-              <span className="font-medium">Date:</span>{' '}
-              {booking.course_runs?.start_date && format(parseISO(booking.course_runs.start_date), 'EEEE, MMMM d, yyyy')}
-            </p>
-            <p><span className="font-medium">Location:</span> {booking.course_runs?.location}</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <h4 className="font-medium text-sm">Course Details</h4>
+            <div className="space-y-2">
+              <Label htmlFor="edit_course_name">Course Name</Label>
+              <Input
+                id="edit_course_name"
+                value={formData.course_name}
+                onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
+                placeholder="e.g., CPCS A17 Telehandler"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_course_dates">Course Dates</Label>
+                <Input
+                  id="edit_course_dates"
+                  value={formData.course_dates}
+                  onChange={(e) => setFormData({ ...formData, course_dates: e.target.value })}
+                  placeholder="e.g., 15-17 Jan 2025"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_course_venue">Venue / Location</Label>
+                <Input
+                  id="edit_course_venue"
+                  value={formData.course_venue}
+                  onChange={(e) => setFormData({ ...formData, course_venue: e.target.value })}
+                  placeholder="e.g., Client Site, Birmingham"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-4 grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <Select

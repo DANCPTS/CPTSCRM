@@ -54,7 +54,7 @@ export default function BookingsPage() {
 
   const getDelegateNames = (booking: any): string | null => {
     if (!booking.lead_id) return null;
-    const courseTitle = booking.course_runs?.courses?.title;
+    const courseTitle = booking.course_name || booking.course_runs?.courses?.title;
     if (!courseTitle) return null;
 
     const leadDelegates = delegateMap.get(booking.lead_id);
@@ -63,6 +63,18 @@ export default function BookingsPage() {
     const normalizedTitle = courseTitle.toLowerCase().trim();
     const delegates = leadDelegates.get(normalizedTitle);
     return delegates && delegates.length > 0 ? delegates.join(', ') : null;
+  };
+
+  const getCourseName = (booking: any): string => {
+    return booking.course_name || booking.course_runs?.courses?.title || 'No course';
+  };
+
+  const getCourseDateDisplay = (booking: any): string => {
+    if (booking.course_dates) return booking.course_dates;
+    if (booking.course_runs?.start_date) {
+      return format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy');
+    }
+    return '';
   };
 
   const statusColors: Record<string, string> = {
@@ -156,9 +168,14 @@ export default function BookingsPage() {
                         <p className="text-xs text-slate-500 mb-1">Booked by: {bookerName}</p>
                       )}
                       <p className="text-sm text-slate-600">
-                        {booking.course_runs?.courses?.title}
-                        {' • '}
-                        {booking.course_runs && format(parseISO(booking.course_runs.start_date), 'MMM d, yyyy')}
+                        {getCourseName(booking)}
+                        {getCourseDateDisplay(booking) && ` • ${getCourseDateDisplay(booking)}`}
+                        {booking.course_venue && (
+                          <span className="text-slate-500"> • {booking.course_venue}</span>
+                        )}
+                        {!booking.course_venue && booking.course_runs?.location && (
+                          <span className="text-slate-500"> • {booking.course_runs.location}</span>
+                        )}
                         {booking.start_time && (
                           <span className="text-slate-500">
                             {' @ '}

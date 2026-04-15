@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, CheckCircle, Calendar, Mail, Phone, Building2, User, FileText, Plus, Send, FileCheck, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, CircleCheck as CheckCircle, Calendar, Mail, Phone, Building2, User, FileText, Plus, Send, FileCheck, Download, Loader as Loader2 } from 'lucide-react';
 import { BookingDialog } from '@/components/booking-dialog';
 import { CelebrationAnimation } from '@/components/celebration-animation';
 import { supabase } from '@/lib/supabase';
@@ -142,6 +142,7 @@ export default function BookingFormDetailPage() {
           .from('bookings')
           .select(`
             id,
+            course_name,
             course_run_id,
             course_runs(
               course_id,
@@ -155,7 +156,7 @@ export default function BookingFormDetailPage() {
           const existingMap: Record<string, boolean> = {};
 
           for (const booking of existingBookings) {
-            const courseTitle = (booking.course_runs as any)?.courses?.title;
+            const courseTitle = booking.course_name || (booking.course_runs as any)?.courses?.title;
             if (courseTitle) {
               const matchingCourse = data.booking_form_courses.find(
                 (bfc: any) => bfc.course_name?.toLowerCase().includes(courseTitle.toLowerCase()) ||
@@ -1351,6 +1352,8 @@ export default function BookingFormDetailPage() {
             companyName: formData.company_name || lead?.company_name,
             courseName: selectedCourse?.course_name || formData.course_name || lead?.quoted_course,
             courseDates: selectedCourse?.course_dates || formData.course_dates || lead?.quoted_dates,
+            courseVenue: selectedCourse?.venue || formData.venue || '',
+            amount: selectedCourse?.price_per_person ? String(selectedCourse.price_per_person) : '',
             numberOfDelegates: selectedCourse?.number_of_delegates || formData.number_of_delegates || lead?.number_of_delegates,
             invoiceNumber: bookingForm.invoice_number,
             bookingReference: bookingForm.booking_reference || lead?.booking_reference,

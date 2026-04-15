@@ -229,9 +229,8 @@ export async function searchGlobal(query: string) {
 export async function getDashboardMetrics() {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAhead = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-  const [leadsThisWeek, allLeads, upcomingRuns, candidateCourses] = await Promise.all([
+  const [leadsThisWeek, allLeads, totalBookings] = await Promise.all([
     supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
@@ -240,47 +239,29 @@ export async function getDashboardMetrics() {
       .from('leads')
       .select('status, source'),
     supabase
-      .from('course_runs')
-      .select('seats_total, seats_booked')
-      .gte('start_date', now.toISOString().split('T')[0])
-      .lte('start_date', thirtyDaysAhead.toISOString().split('T')[0]),
-    supabase
-      .from('candidate_courses')
-      .select('result')
-      .in('result', ['passed', 'failed']),
+      .from('bookings')
+      .select('*', { count: 'exact', head: true }),
   ]);
 
   if (leadsThisWeek.error) console.error('Error fetching leadsThisWeek:', leadsThisWeek.error);
   if (allLeads.error) console.error('Error fetching allLeads:', allLeads.error);
-  if (upcomingRuns.error) console.error('Error fetching upcomingRuns:', upcomingRuns.error);
-  if (candidateCourses.error) console.error('Error fetching candidateCourses:', candidateCourses.error);
 
   const totalLeads = allLeads.data?.length || 0;
   const wonLeads = allLeads.data?.filter(l => l.status === 'won').length || 0;
   const conversion = totalLeads > 0 ? (wonLeads / totalLeads * 100).toFixed(1) : '0';
 
-  // Email imported leads statistics (from email upload button - Google Ads)
   const emailLeads = allLeads.data?.filter(l => l.source === 'email_import') || [];
   const emailWon = emailLeads.filter(l => l.status === 'won').length;
   const emailConversion = emailLeads.length > 0 ? (emailWon / emailLeads.length * 100).toFixed(1) : '0';
 
-  // Manual leads statistics (entered through UI: email, phone, referral)
   const manualLeads = allLeads.data?.filter(l => l.source === 'email' || l.source === 'phone' || l.source === 'referral' || l.source === 'web' || l.source === 'manual') || [];
   const manualWon = manualLeads.filter(l => l.status === 'won').length;
   const manualConversion = manualLeads.length > 0 ? (manualWon / manualLeads.length * 100).toFixed(1) : '0';
 
-  const totalSeats = upcomingRuns.data?.reduce((sum, run) => sum + run.seats_total, 0) || 0;
-  const bookedSeats = upcomingRuns.data?.reduce((sum, run) => sum + run.seats_booked, 0) || 0;
-
-  const totalCompleted = candidateCourses.data?.length || 0;
-  const passedCourses = candidateCourses.data?.filter(c => c.result === 'passed').length || 0;
-  const passRate = totalCompleted > 0 ? (passedCourses / totalCompleted * 100).toFixed(1) : '0';
-
   return {
     leadsThisWeek: leadsThisWeek.count || 0,
     conversionRate: conversion,
-    seatsFilled: totalSeats > 0 ? Math.round((bookedSeats / totalSeats) * 100) : 0,
-    passRate: passRate,
+    totalBookings: totalBookings.count || 0,
     emailLeads: {
       total: emailLeads.length,
       won: emailWon,
