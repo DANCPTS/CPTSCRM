@@ -279,8 +279,9 @@ Deno.serve(async (req: Request) => {
       const startTime = formatStartTime(booking.start_time);
 
       let delegateNames = 'TBC';
-      if (course?.title) {
-        const normalizedTitle = course.title.toLowerCase().trim();
+      const courseTitle = course?.title || booking.course_name || '';
+      if (courseTitle) {
+        const normalizedTitle = courseTitle.toLowerCase().trim();
         const delegatesForCourse = delegateCourseMap.get(normalizedTitle);
         if (delegatesForCourse && delegatesForCourse.length > 0) {
           delegateNames = delegatesForCourse.join(', ');
@@ -295,11 +296,11 @@ Deno.serve(async (req: Request) => {
 
       return `
         <div style="margin: 20px 0; padding: 15px; background-color: #f9f9f9; border-left: 4px solid #0f3d5e;">
-          <h3 style="color: #0f3d5e; margin-top: 0;">${course?.title || 'Training Course'}</h3>
+          <h3 style="color: #0f3d5e; margin-top: 0;">${course?.title || booking.course_name || 'Training Course'}</h3>
           <table class="info-table">
             <tr>
               <td>Course Date(s):</td>
-              <td>${courseRun ? formatDateRange(courseRun.start_date, courseRun.end_date) : 'TBC'}</td>
+              <td>${courseRun ? formatDateRange(courseRun.start_date, courseRun.end_date) : (booking.course_dates || 'TBC')}</td>
             </tr>
             <tr>
               <td>Start Time:</td>
@@ -307,7 +308,7 @@ Deno.serve(async (req: Request) => {
             </tr>
             <tr>
               <td>Venue Location:</td>
-              <td>${courseRun?.location || 'Construction & Plant Training Services, Podington, NN29 7XA'}</td>
+              <td>${courseRun?.location || booking.course_venue || 'Construction & Plant Training Services, Podington, NN29 7XA'}</td>
             </tr>
             <tr>
               <td>Delegate Name${delegateCount > 1 ? 's' : ''}:</td>
@@ -326,7 +327,7 @@ Deno.serve(async (req: Request) => {
 
     const emailSubject = bookings.length > 1
       ? `Joining Instructions - ${bookings.length} Training Courses`
-      : `Joining Instructions - ${firstBooking.course_run?.course?.title || 'Training Course'}`;
+      : `Joining Instructions - ${firstBooking.course_run?.course?.title || firstBooking.course_name || 'Training Course'}`;
 
     return new Response(
       JSON.stringify({
