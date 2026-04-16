@@ -421,26 +421,49 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
 
       if (clientType === 'existing' && bookingType === 'individual') {
         const resolvedCandidateId = bookingData.candidate_id || prefillData?.candidateId || '';
-        if (!resolvedCandidateId) {
+        if (!resolvedCandidateId && !hasAutoFilledFromLead) {
           toast.error('Please select a candidate');
           setLoading(false);
           return;
         }
 
-        const { data: candidate } = await supabase
-          .from('candidates')
-          .select('*')
-          .eq('id', resolvedCandidateId)
-          .single();
+        if (resolvedCandidateId) {
+          const { data: candidate } = await supabase
+            .from('candidates')
+            .select('*')
+            .eq('id', resolvedCandidateId)
+            .single();
 
-        if (candidate) {
+          if (candidate) {
+            const { data: contact, error: contactError } = await supabase
+              .from('contacts')
+              .insert([{
+                first_name: candidate.first_name,
+                last_name: candidate.last_name,
+                email: candidate.email || '',
+                phone: candidate.phone || '',
+                language: 'EN',
+                company_id: null,
+              }])
+              .select()
+              .single();
+
+            if (contactError) throw contactError;
+            contactId = contact.id;
+            companyId = null;
+          }
+        } else if (hasAutoFilledFromLead) {
+          const contactName = prefillData?.contactName || '';
+          const [firstName, ...lastNameParts] = contactName.split(' ');
+          const lastName = lastNameParts.join(' ');
+
           const { data: contact, error: contactError } = await supabase
             .from('contacts')
             .insert([{
-              first_name: candidate.first_name,
-              last_name: candidate.last_name,
-              email: candidate.email || '',
-              phone: candidate.phone || '',
+              first_name: firstName || '',
+              last_name: lastName || '',
+              email: prefillData?.contactEmail || '',
+              phone: prefillData?.contactPhone || '',
               language: 'EN',
               company_id: null,
             }])
@@ -488,7 +511,8 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
       let candidateId = null;
       if (clientType === 'existing' && bookingType === 'individual') {
         candidateId = bookingData.candidate_id || prefillData?.candidateId || null;
-      } else {
+      }
+      if (!candidateId) {
         const { data: contact } = await supabase
           .from('contacts')
           .select('email, first_name, last_name, phone')
