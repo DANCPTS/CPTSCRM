@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,14 +97,17 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
     postcode: '',
   });
 
+  const prefillDataRef = useRef(prefillData);
+  prefillDataRef.current = prefillData;
+
   useEffect(() => {
     if (open) {
       loadData();
-      if (prefillData) {
+      if (prefillDataRef.current) {
         prefillFormData();
       }
     }
-  }, [open, prefillData]);
+  }, [open]);
 
   const prefillFormData = async () => {
     if (!prefillData) return;
@@ -417,7 +420,8 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
       let companyId: string | null = bookingData.company_id;
 
       if (clientType === 'existing' && bookingType === 'individual') {
-        if (!bookingData.candidate_id) {
+        const resolvedCandidateId = bookingData.candidate_id || prefillData?.candidateId || '';
+        if (!resolvedCandidateId) {
           toast.error('Please select a candidate');
           setLoading(false);
           return;
@@ -426,7 +430,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
         const { data: candidate } = await supabase
           .from('candidates')
           .select('*')
-          .eq('id', bookingData.candidate_id)
+          .eq('id', resolvedCandidateId)
           .single();
 
         if (candidate) {
@@ -483,7 +487,7 @@ export function BookingDialog({ open, onClose, onSuccess, prefillData }: Booking
 
       let candidateId = null;
       if (clientType === 'existing' && bookingType === 'individual') {
-        candidateId = bookingData.candidate_id;
+        candidateId = bookingData.candidate_id || prefillData?.candidateId || null;
       } else {
         const { data: contact } = await supabase
           .from('contacts')
