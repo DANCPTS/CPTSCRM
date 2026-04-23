@@ -289,11 +289,20 @@ export default function BookingFormDetailPage() {
         y += (lines.length * 4) + 4;
       };
 
-      doc.setFontSize(20);
+      const bookingRef = bookingForm.booking_reference || lead?.booking_reference;
+      if (bookingRef) {
+        doc.setFontSize(22);
+        doc.setTextColor(15, 61, 94);
+        doc.setFont('helvetica', 'bold');
+        doc.text(bookingRef, pageWidth / 2, y, { align: 'center' });
+        y += 10;
+      }
+
+      doc.setFontSize(18);
       doc.setTextColor(15, 61, 94);
       doc.setFont('helvetica', 'bold');
       doc.text('CPTS Training - Booking Form', pageWidth / 2, y, { align: 'center' });
-      y += 10;
+      y += 9;
 
       doc.setFontSize(11);
       if (bookingForm.status === 'signed') {
@@ -303,15 +312,7 @@ export default function BookingFormDetailPage() {
         doc.setTextColor(146, 64, 14);
         doc.text(`STATUS: ${bookingForm.status.toUpperCase()}`, pageWidth / 2, y, { align: 'center' });
       }
-      y += 8;
-
-      if (bookingForm.booking_reference) {
-        doc.setFontSize(10);
-        doc.setTextColor(100, 116, 139);
-        doc.text(`Booking Reference: ${bookingForm.booking_reference}`, pageWidth / 2, y, { align: 'center' });
-        y += 8;
-      }
-      y += 2;
+      y += 10;
 
       drawSectionHeader('Contact Information');
 
