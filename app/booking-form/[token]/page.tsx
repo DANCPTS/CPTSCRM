@@ -27,6 +27,8 @@ export default function BookingFormPage() {
     registration_no: '',
     vat_no: '',
     contact_name: '',
+    contact_first_name: '',
+    contact_last_name: '',
     contact_email: '',
     contact_phone: '',
     address: '',
@@ -162,11 +164,18 @@ export default function BookingFormPage() {
       }
 
       if (data.leads) {
+        const leadName = (data.leads.name || '').trim();
+        const nameParts = leadName.split(/\s+/);
+        const leadFirstName = nameParts[0] || '';
+        const leadLastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
         const newFormData = {
           company_name: data.leads.company_name || '',
           registration_no: '',
           vat_no: '',
-          contact_name: data.leads.name || '',
+          contact_name: leadName,
+          contact_first_name: leadFirstName,
+          contact_last_name: leadLastName,
           contact_email: data.leads.email || '',
           contact_phone: data.leads.phone || '',
           address: '',
@@ -453,7 +462,11 @@ export default function BookingFormPage() {
         .from('booking_forms')
         .update({
           status: 'signed',
-          form_data: { ...formData, customer_type: customerType },
+          form_data: {
+            ...formData,
+            contact_name: `${formData.contact_first_name} ${formData.contact_last_name}`.trim(),
+            customer_type: customerType,
+          },
           signature_data: signatureData,
           signed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -656,11 +669,35 @@ export default function BookingFormPage() {
                   )}
 
                   <div className="space-y-2">
-                    <Label htmlFor="contact_name">{customerType === 'business' ? 'Contact Name' : 'Full Name'} *</Label>
+                    <Label htmlFor="contact_first_name">{customerType === 'business' ? 'Contact First Name' : 'First Name'} *</Label>
                     <Input
-                      id="contact_name"
-                      value={formData.contact_name}
-                      onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                      id="contact_first_name"
+                      value={formData.contact_first_name}
+                      onChange={(e) => {
+                        const first = e.target.value;
+                        setFormData({
+                          ...formData,
+                          contact_first_name: first,
+                          contact_name: `${first} ${formData.contact_last_name}`.trim(),
+                        });
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_last_name">{customerType === 'business' ? 'Contact Last Name' : 'Last Name'} *</Label>
+                    <Input
+                      id="contact_last_name"
+                      value={formData.contact_last_name}
+                      onChange={(e) => {
+                        const last = e.target.value;
+                        setFormData({
+                          ...formData,
+                          contact_last_name: last,
+                          contact_name: `${formData.contact_first_name} ${last}`.trim(),
+                        });
+                      }}
                       required
                     />
                   </div>
@@ -912,7 +949,7 @@ export default function BookingFormPage() {
 
                                 const newDelegates = [...delegates];
                                 if (checked) {
-                                  newDelegates[index].name = formData.contact_name;
+                                  newDelegates[index].name = `${formData.contact_first_name} ${formData.contact_last_name}`.trim();
                                   newDelegates[index].email = formData.contact_email;
                                   newDelegates[index].phone = formData.contact_phone;
                                   newDelegates[index].address = formData.address;
