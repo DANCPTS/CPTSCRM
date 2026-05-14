@@ -147,10 +147,8 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       });
       setPreviousStatus('new');
       setProposalCourses([]);
-      setActiveTab('details');
-      generateNextBookingReference();
     }
-  }, [lead, userProfile, open]);
+  }, [lead, userProfile]);
 
   const getInitials = (fullName: string): string => {
     const parts = fullName.trim().split(/\s+/);
