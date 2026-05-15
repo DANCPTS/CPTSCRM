@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,14 +84,22 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
     booking_reference: '',
   });
 
+  const lastInitKeyRef = useRef<string | null>(null);
+  const DRAFT_KEY = 'lead-dialog-new-draft';
+
   useEffect(() => {
     loadUsers();
   }, []);
 
   useEffect(() => {
-    // Only reset form data when the dialog is opened with a different lead
-    // Don't reset when just switching tabs or refocusing
-    if (!open) return;
+    if (!open) {
+      lastInitKeyRef.current = null;
+      return;
+    }
+
+    const initKey = lead?.id ? `lead:${lead.id}` : 'new';
+    if (lastInitKeyRef.current === initKey) return;
+    lastInitKeyRef.current = initKey;
 
     if (lead) {
       setBookingRefGenerated(!!lead.booking_reference);
@@ -121,8 +129,16 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       setPreviousStatus(lead.status || 'new');
       loadProposalCourses(lead.id);
     } else {
+      let restored: any = null;
+      try {
+        const raw = typeof window !== 'undefined' ? sessionStorage.getItem(DRAFT_KEY) : null;
+        if (raw) restored = JSON.parse(raw);
+      } catch (e) {
+        restored = null;
+      }
+
       setBookingRefGenerated(false);
-      setFormData({
+      setFormData(restored ?? {
         name: '',
         company_name: '',
         email: '',
@@ -148,7 +164,15 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
       setPreviousStatus('new');
       setProposalCourses([]);
     }
-  }, [lead, userProfile]);
+  }, [lead?.id, open]);
+
+  useEffect(() => {
+    if (!open || lead?.id) return;
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(formData));
+    } catch (e) {}
+  }, [formData, open, lead?.id]);
 
   const getInitials = (fullName: string): string => {
     const parts = fullName.trim().split(/\s+/);
@@ -371,6 +395,10 @@ export function LeadDialog({ open, onClose, lead }: LeadDialogProps) {
 
         toast.success('Lead created successfully');
       }
+
+      try {
+        if (typeof window !== 'undefined') sessionStorage.removeItem(DRAFT_KEY);
+      } catch (e) {}
 
       if (statusChangedToWon) {
         onClose();
