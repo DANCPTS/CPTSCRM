@@ -23,8 +23,10 @@ export default function Home() {
   const [nvqMetrics, setNvqMetrics] = useState({ overdue: 0, dueToday: 0, dueThisWeek: 0 });
 
   useEffect(() => {
-    loadDashboard();
-  }, [userProfile]);
+    if (userProfile?.id) {
+      loadDashboard();
+    }
+  }, [userProfile?.id]);
 
   const loadDashboard = async () => {
     try {

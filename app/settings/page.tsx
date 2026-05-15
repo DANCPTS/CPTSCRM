@@ -200,7 +200,7 @@ export default function SettingsPage() {
       loadEmailSettings();
     }
     loadCalendarColors();
-  }, [userProfile]);
+  }, [userProfile?.id, userProfile?.role]);
 
   const loadEmailSettings = async () => {
     try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const profileLoadedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -34,14 +35,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadUserProfile(session.user.id);
-      } else {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+        return;
+      }
+
+      const nextUser = session?.user ?? null;
+
+      if (!nextUser) {
+        profileLoadedForRef.current = null;
+        setUser(null);
         setUserProfile(null);
         setLoading(false);
+        return;
       }
+
+      if (profileLoadedForRef.current === nextUser.id) {
+        return;
+      }
+
+      setUser(nextUser);
+      loadUserProfile(nextUser.id);
     });
 
     return () => subscription.unsubscribe();
@@ -89,10 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (createError) {
             console.error('Failed to create profile:', createError);
           } else {
+            profileLoadedForRef.current = userId;
             setUserProfile(newProfile);
           }
         }
       } else {
+        profileLoadedForRef.current = userId;
         setUserProfile(data);
       }
     } catch (err) {

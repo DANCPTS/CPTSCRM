@@ -66,11 +66,11 @@ export default function LeadsPage() {
   const [scrollLeft, setScrollLeft] = useState(0);
 
   useEffect(() => {
-    if (userProfile) {
+    if (userProfile?.id) {
       loadUsers();
-      setSelectedUserId(userProfile.id);
+      setSelectedUserId((prev) => prev ?? userProfile.id);
     }
-  }, [userProfile]);
+  }, [userProfile?.id]);
 
   useEffect(() => {
     const leadId = searchParams.get('id');

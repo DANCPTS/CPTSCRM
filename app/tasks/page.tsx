@@ -29,8 +29,10 @@ export default function TasksPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
-    loadTasks();
-  }, [userProfile]);
+    if (userProfile?.id) {
+      loadTasks();
+    }
+  }, [userProfile?.id]);
 
   useEffect(() => {
     const taskId = searchParams.get('id');
