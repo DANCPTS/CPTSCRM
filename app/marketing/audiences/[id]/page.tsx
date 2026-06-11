@@ -285,15 +285,25 @@ export default function AudienceDetailPage() {
 
       if (newMembers.length === 0) { toast.error('No new members to add'); setAdding(false); return; }
 
+      const unsubCount = newMembers.filter(m => !m.subscribed).length;
+
       const BATCH_SIZE = 500;
+      let insertedCount = 0;
       for (let i = 0; i < newMembers.length; i += BATCH_SIZE) {
-        const { error } = await supabase.from('audience_members').insert(newMembers.slice(i, i + BATCH_SIZE));
+        const batch = newMembers.slice(i, i + BATCH_SIZE);
+        const { data, error } = await supabase.from('audience_members').upsert(batch, { onConflict: 'audience_id,email', ignoreDuplicates: true }).select('id');
         if (error) throw error;
+        insertedCount += (data?.length || 0);
       }
 
-      await supabase.from('marketing_audiences').update({ member_count: members.length + newMembers.length }).eq('id', audienceId);
+      const skippedCount = newMembers.length - insertedCount;
 
-      toast.success(`Added ${newMembers.length} members`);
+      await supabase.from('marketing_audiences').update({ member_count: members.length + insertedCount }).eq('id', audienceId);
+
+      let msg = `Added ${insertedCount} new member${insertedCount !== 1 ? 's' : ''}`;
+      if (skippedCount > 0) msg += `, ${skippedCount} duplicate${skippedCount !== 1 ? 's' : ''} skipped`;
+      if (unsubCount > 0) msg += `, ${unsubCount} kept as unsubscribed`;
+      toast.success(msg);
       setAddDialogOpen(false);
       resetAddForm();
       loadAudienceData();
@@ -335,6 +345,7 @@ export default function AudienceDetailPage() {
   const filteredAddAll = allCrmContacts.filter(c => c.name.toLowerCase().includes(addSearch.toLowerCase()) || c.email.toLowerCase().includes(addSearch.toLowerCase()) || (c.company_name || '').toLowerCase().includes(addSearch.toLowerCase()));
 
   const totalNewToAdd = new Set([...Array.from(selectedCandidates), ...Array.from(selectedContacts), ...Array.from(selectedAll), ...excelRecipients.map(r => r.email)]).size;
+  const unsubInSelection = [...Array.from(selectedCandidates), ...Array.from(selectedContacts), ...Array.from(selectedAll), ...excelRecipients.map(r => r.email)].filter(e => unsubscribedEmails.has(e)).length;
 
   if (loading) {
     return (
@@ -642,7 +653,10 @@ export default function AudienceDetailPage() {
                         {excelRecipients.map(r => (
                           <div key={r.email} className="flex items-center justify-between p-2 bg-white rounded border text-sm">
                             <div className="min-w-0"><p className="font-medium truncate">{r.name}</p><p className="text-xs text-slate-500 truncate">{r.email}</p></div>
-                            <Button variant="ghost" size="sm" onClick={() => setExcelRecipients(prev => prev.filter(x => x.email !== r.email))}><X className="h-4 w-4 text-slate-400" /></Button>
+                            <div className="flex items-center gap-1">
+                              {unsubscribedEmails.has(r.email) && <Badge variant="outline" className="text-red-600 border-red-200 text-xs">Unsubscribed</Badge>}
+                              <Button variant="ghost" size="sm" onClick={() => setExcelRecipients(prev => prev.filter(x => x.email !== r.email))}><X className="h-4 w-4 text-slate-400" /></Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -658,8 +672,16 @@ export default function AudienceDetailPage() {
             </Tabs>
 
             {totalNewToAdd > 0 && (
-              <div className="bg-slate-50 border rounded-lg p-3 text-sm font-medium text-slate-700">
-                {totalNewToAdd} new member{totalNewToAdd !== 1 ? 's' : ''} to add
+              <div className="space-y-2">
+                <div className="bg-slate-50 border rounded-lg p-3 text-sm font-medium text-slate-700">
+                  {totalNewToAdd} new member{totalNewToAdd !== 1 ? 's' : ''} to add
+                </div>
+                {unsubInSelection > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 flex items-center gap-2">
+                    <Ban className="h-4 w-4 flex-shrink-0" />
+                    {unsubInSelection} email{unsubInSelection !== 1 ? 's are' : ' is'} globally unsubscribed and will be added as inactive (won't receive emails)
+                  </div>
+                )}
               </div>
             )}
           </div>

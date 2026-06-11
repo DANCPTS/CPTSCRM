@@ -294,13 +294,22 @@ export function AudienceDialog({ open, onOpenChange, onCreated }: AudienceDialog
       }));
 
       const BATCH_SIZE = 500;
+      let insertedCount = 0;
       for (let i = 0; i < members.length; i += BATCH_SIZE) {
         const batch = members.slice(i, i + BATCH_SIZE);
-        const { error: insertError } = await supabase.from('audience_members').insert(batch);
+        const { data, error: insertError } = await supabase.from('audience_members').upsert(batch, { onConflict: 'audience_id,email', ignoreDuplicates: true }).select('id');
         if (insertError) throw insertError;
+        insertedCount += (data?.length || 0);
       }
 
-      toast.success(`Audience "${name}" created with ${totalSelected.length} members`);
+      if (insertedCount !== totalSelected.length) {
+        await supabase.from('marketing_audiences').update({ member_count: insertedCount }).eq('id', audience.id);
+      }
+
+      const unsubCount = members.filter(m => !m.subscribed).length;
+      let msg = `Audience "${name}" created with ${insertedCount} member${insertedCount !== 1 ? 's' : ''}`;
+      if (unsubCount > 0) msg += ` (${unsubCount} kept as unsubscribed)`;
+      toast.success(msg);
       resetForm();
       onOpenChange(false);
       onCreated();
