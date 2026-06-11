@@ -229,22 +229,55 @@ export default function AudienceDetailPage() {
 
       const existingEmails = new Set([...members.map(m => m.email.toLowerCase()), ...excelRecipients.map(r => r.email)]);
       const parsed: any[] = [];
+      let duplicateCount = 0;
+      let alreadyInAudienceCount = 0;
+      let invalidEmailCount = 0;
+      let emptyRowCount = 0;
+
+      const memberEmails = new Set(members.map(m => m.email.toLowerCase()));
+
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i] as any[];
-        if (!row || row.length === 0) continue;
-        const email = String(row[emailIndex] || '').trim().toLowerCase();
-        if (email && email.includes('@') && !existingEmails.has(email)) {
-          let recipientName = '';
-          if (firstNameIndex !== -1 || lastNameIndex !== -1) {
-            recipientName = `${firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : ''} ${lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : ''}`.trim();
-          } else if (nameIndex !== -1) { recipientName = String(row[nameIndex] || '').trim(); }
-          parsed.push({ email, name: recipientName || email.split('@')[0], company_name: companyIndex !== -1 ? String(row[companyIndex] || '').trim() || undefined : undefined, source: 'excel_upload' });
-          existingEmails.add(email);
+        if (!row || row.length === 0 || row.every(cell => !cell)) {
+          emptyRowCount++;
+          continue;
         }
+        const email = String(row[emailIndex] || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) {
+          invalidEmailCount++;
+          continue;
+        }
+        if (memberEmails.has(email)) {
+          alreadyInAudienceCount++;
+          existingEmails.add(email);
+          continue;
+        }
+        if (existingEmails.has(email)) {
+          duplicateCount++;
+          continue;
+        }
+        let recipientName = '';
+        if (firstNameIndex !== -1 || lastNameIndex !== -1) {
+          recipientName = `${firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : ''} ${lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : ''}`.trim();
+        } else if (nameIndex !== -1) { recipientName = String(row[nameIndex] || '').trim(); }
+        parsed.push({ email, name: recipientName || email.split('@')[0], company_name: companyIndex !== -1 ? String(row[companyIndex] || '').trim() || undefined : undefined, source: 'excel_upload' });
+        existingEmails.add(email);
       }
       if (parsed.length === 0) { toast.error('No valid new emails found'); return; }
       setExcelRecipients(prev => [...prev, ...parsed]);
-      toast.success(`Found ${parsed.length} contacts`);
+
+      const totalRows = jsonData.length - 1;
+      const skippedParts: string[] = [];
+      if (duplicateCount > 0) skippedParts.push(`${duplicateCount} duplicates in file`);
+      if (alreadyInAudienceCount > 0) skippedParts.push(`${alreadyInAudienceCount} already in audience`);
+      if (invalidEmailCount > 0) skippedParts.push(`${invalidEmailCount} invalid/missing emails`);
+      if (emptyRowCount > 0) skippedParts.push(`${emptyRowCount} empty rows`);
+
+      if (skippedParts.length > 0) {
+        toast.success(`Added ${parsed.length} of ${totalRows} rows. Skipped: ${skippedParts.join(', ')}`);
+      } else {
+        toast.success(`Found ${parsed.length} contacts`);
+      }
     } catch (error: any) { toast.error('Failed to parse file'); }
     finally { setUploadingExcel(false); e.target.value = ''; }
   };

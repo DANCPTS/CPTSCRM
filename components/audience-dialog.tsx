@@ -148,29 +148,41 @@ export function AudienceDialog({ open, onOpenChange, onCreated }: AudienceDialog
 
       const existingEmails = new Set(excelRecipients.map(r => r.email));
       const parsed: Recipient[] = [];
+      let duplicateCount = 0;
+      let invalidEmailCount = 0;
+      let emptyRowCount = 0;
 
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i] as any[];
-        if (!row || row.length === 0) continue;
-        const email = String(row[emailIndex] || '').trim().toLowerCase();
-        if (email && email.includes('@') && !existingEmails.has(email)) {
-          let recipientName = '';
-          if (firstNameIndex !== -1 || lastNameIndex !== -1) {
-            const firstName = firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : '';
-            const lastName = lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : '';
-            recipientName = `${firstName} ${lastName}`.trim();
-          } else if (nameIndex !== -1) {
-            recipientName = String(row[nameIndex] || '').trim();
-          }
-          const companyName = companyIndex !== -1 ? String(row[companyIndex] || '').trim() : undefined;
-          parsed.push({
-            email,
-            name: recipientName || email.split('@')[0],
-            company_name: companyName || undefined,
-            source: 'excel_upload',
-          });
-          existingEmails.add(email);
+        if (!row || row.length === 0 || row.every(cell => !cell)) {
+          emptyRowCount++;
+          continue;
         }
+        const email = String(row[emailIndex] || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) {
+          invalidEmailCount++;
+          continue;
+        }
+        if (existingEmails.has(email)) {
+          duplicateCount++;
+          continue;
+        }
+        let recipientName = '';
+        if (firstNameIndex !== -1 || lastNameIndex !== -1) {
+          const firstName = firstNameIndex !== -1 ? String(row[firstNameIndex] || '').trim() : '';
+          const lastName = lastNameIndex !== -1 ? String(row[lastNameIndex] || '').trim() : '';
+          recipientName = `${firstName} ${lastName}`.trim();
+        } else if (nameIndex !== -1) {
+          recipientName = String(row[nameIndex] || '').trim();
+        }
+        const companyName = companyIndex !== -1 ? String(row[companyIndex] || '').trim() : undefined;
+        parsed.push({
+          email,
+          name: recipientName || email.split('@')[0],
+          company_name: companyName || undefined,
+          source: 'excel_upload',
+        });
+        existingEmails.add(email);
       }
 
       if (parsed.length === 0) {
@@ -179,7 +191,18 @@ export function AudienceDialog({ open, onOpenChange, onCreated }: AudienceDialog
       }
 
       setExcelRecipients(prev => [...prev, ...parsed]);
-      toast.success(`Found ${parsed.length} valid contacts`);
+
+      const totalRows = jsonData.length - 1;
+      const skippedParts: string[] = [];
+      if (duplicateCount > 0) skippedParts.push(`${duplicateCount} duplicates`);
+      if (invalidEmailCount > 0) skippedParts.push(`${invalidEmailCount} invalid/missing emails`);
+      if (emptyRowCount > 0) skippedParts.push(`${emptyRowCount} empty rows`);
+
+      if (skippedParts.length > 0) {
+        toast.success(`Added ${parsed.length} contacts from ${totalRows} rows. Skipped: ${skippedParts.join(', ')}`);
+      } else {
+        toast.success(`Found ${parsed.length} valid contacts`);
+      }
     } catch (error: any) {
       toast.error('Failed to parse file: ' + error.message);
     } finally {
