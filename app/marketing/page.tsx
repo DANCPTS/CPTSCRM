@@ -12,11 +12,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Mail, Building2, User, Users, Send, Sparkles, Eye, Clock, CircleCheck as CheckCircle, Circle as XCircle, Trash2, RefreshCw, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, X, Ban, UsersRound } from 'lucide-react';
+import { Plus, Mail, Building2, User, Users, Send, Sparkles, Eye, Clock, CircleCheck as CheckCircle, Circle as XCircle, Trash2, RefreshCw, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, X, Ban, UsersRound, FileCode2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
 import { AudienceDialog } from '@/components/audience-dialog';
+import { ImportHtmlTemplateDialog } from '@/components/import-html-template-dialog';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -52,6 +53,7 @@ export default function MarketingPage() {
   const [deleteAudienceConfirmOpen, setDeleteAudienceConfirmOpen] = useState(false);
   const [audienceToDelete, setAudienceToDelete] = useState<string | null>(null);
   const [addUnsubscribeOpen, setAddUnsubscribeOpen] = useState(false);
+  const [importHtmlOpen, setImportHtmlOpen] = useState(false);
   const [newUnsubscribeEmail, setNewUnsubscribeEmail] = useState('');
 
   // Template form
@@ -992,7 +994,11 @@ export default function MarketingPage() {
           </TabsContent>
 
           <TabsContent value="templates" className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setImportHtmlOpen(true)}>
+                <FileCode2 className="mr-2 h-4 w-4" />
+                Import HTML Template
+              </Button>
               <Button onClick={() => setTemplateDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 New Template
@@ -1692,6 +1698,20 @@ export default function MarketingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportHtmlTemplateDialog
+        open={importHtmlOpen}
+        onOpenChange={setImportHtmlOpen}
+        onUseTemplate={(data) => {
+          setTemplateName(data.name);
+          setTemplateSubject(data.subject);
+          setTemplateBody(data.html);
+          setTemplateCategory('general');
+          setEditingTemplateId(null);
+          setTemplateDialogOpen(true);
+          toast.success('Template imported - review and save it below');
+        }}
+      />
     </AppShell>
   );
 }

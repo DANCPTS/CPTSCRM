@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, existingSubject, existingBody } = await req.json();
+    const { prompt, existingSubject, existingBody, templateHtml, generationMode } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -39,9 +39,58 @@ Deno.serve(async (req: Request) => {
     }
 
     const isModification = existingSubject || existingBody;
+    const hasTemplate = templateHtml && generationMode;
 
-    const systemPrompt = isModification
-      ? `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+    let systemPrompt: string;
+
+    if (hasTemplate && generationMode === "rewrite_content") {
+      systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+
+You have been given an imported HTML email template. Your task is to REPLACE the marketing copy while PRESERVING the original HTML structure, layout, formatting, section order, buttons, links, and responsive behaviour.
+
+IMPORTED TEMPLATE HTML:
+${templateHtml}
+
+RULES:
+- Keep ALL HTML structure, tables, inline CSS, colours, fonts, spacing, and responsive media queries exactly as they are.
+- Replace ONLY the text content (headings, paragraphs, button labels, alt text) to match the user's campaign brief.
+- Preserve any personalisation variables like {{first_name}}, {{company_name}}, {{unsubscribe_url}}.
+- Do NOT invent prices, statistics, testimonials, guarantees, or legal claims.
+- Maintain a professional and engaging tone.
+- Keep the email focused on CPCS training benefits unless the user specifies otherwise.
+
+Return ONLY a JSON object with this exact format:
+{
+  "subject": "Your new subject line",
+  "body": "The full HTML email body with your new copy inserted into the original template structure"
+}
+
+Do not include any other text outside the JSON object.`;
+    } else if (hasTemplate && generationMode === "inspiration") {
+      systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+
+You have been given an HTML email template for INSPIRATION. Use its style, tone, and structure as a reference when creating new email content, but generate fresh HTML that follows similar design patterns.
+
+REFERENCE TEMPLATE (for style inspiration only):
+${templateHtml}
+
+RULES:
+- Create new content inspired by the template's style and tone.
+- Maintain a professional and engaging tone.
+- Keep the email focused on CPCS training benefits unless the user specifies otherwise.
+- Preserve any personalisation variables like {{first_name}}, {{company_name}}, {{unsubscribe_url}}.
+- Do NOT invent prices, statistics, testimonials, guarantees, or legal claims.
+- Include clear calls-to-action.
+
+Return ONLY a JSON object with this exact format:
+{
+  "subject": "Your subject line here",
+  "body": "Your email body here"
+}
+
+Do not include any other text outside the JSON object.`;
+    } else if (isModification) {
+      systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
 
 You have been given an existing marketing email to modify based on the user's instructions.
 
@@ -54,6 +103,8 @@ Your task is to modify this email according to the user's instructions while:
 - Keeping the email focused on CPCS training benefits
 - Preserving any important information unless asked to remove it
 - Using proper grammar and professional tone
+- Preserving any personalisation variables like {{first_name}}, {{company_name}}, {{unsubscribe_url}}
+- Do NOT invent prices, statistics, testimonials, guarantees, or legal claims
 
 Return ONLY a JSON object with this exact format:
 {
@@ -61,8 +112,9 @@ Return ONLY a JSON object with this exact format:
   "body": "Your modified email body here"
 }
 
-Do not include any other text outside the JSON object.`
-      : `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
+Do not include any other text outside the JSON object.`;
+    } else {
+      systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
 
 Your task is to create compelling marketing emails that:
 - Are professional and engaging
@@ -70,6 +122,7 @@ Your task is to create compelling marketing emails that:
 - Include clear calls-to-action
 - Are formatted in a clean, readable way
 - Use proper grammar and professional tone
+- Do NOT invent prices, statistics, testimonials, guarantees, or legal claims
 
 Generate both an email subject line and email body. Return ONLY a JSON object with this exact format:
 {
@@ -78,6 +131,9 @@ Generate both an email subject line and email body. Return ONLY a JSON object wi
 }
 
 Do not include any other text outside the JSON object.`;
+    }
+
+    const maxTokens = hasTemplate ? 4000 : 1000;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -92,7 +148,7 @@ Do not include any other text outside the JSON object.`;
           { role: "user", content: prompt },
         ],
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: maxTokens,
       }),
     });
 
