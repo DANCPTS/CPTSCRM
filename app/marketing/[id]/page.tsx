@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound, MessageSquare, FileCode2 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -1260,10 +1260,20 @@ export default function CampaignDetailPage() {
               </div>
               <div>
                 <div className="text-sm text-slate-500 mb-1">Body Preview</div>
-                <div
-                  className="text-sm text-slate-600 line-clamp-6 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: campaign.email_templates?.body || 'N/A' }}
-                />
+                {campaign.email_templates?.template_mode === 'standalone_html' ? (
+                  <iframe
+                    srcDoc={campaign.email_templates.body}
+                    title="Template preview"
+                    sandbox="allow-same-origin"
+                    className="w-full border rounded h-40"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
+                  <div
+                    className="text-sm text-slate-600 line-clamp-6 prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: campaign.email_templates?.body || 'N/A' }}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1479,6 +1489,7 @@ export default function CampaignDetailPage() {
             <EmailPreview
               subject={campaign?.email_templates?.subject || ''}
               body={campaign?.email_templates?.body || ''}
+              templateMode={campaign?.email_templates?.template_mode || 'standard'}
             />
           </div>
         </DialogContent>
@@ -1543,17 +1554,29 @@ export default function CampaignDetailPage() {
                 className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+            {campaign?.email_templates?.template_mode === 'standalone_html' && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <FileCode2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  This is an imported HTML template. It will be sent as a complete standalone email without the standard header, footer, or wrapper.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Email Body</label>
-              <Tabs defaultValue="editor" className="w-full">
+              <Tabs defaultValue={campaign?.email_templates?.template_mode === 'standalone_html' ? 'html' : 'editor'} className="w-full">
                 <TabsList className="mb-2">
-                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  {campaign?.email_templates?.template_mode !== 'standalone_html' && (
+                    <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  )}
                   <TabsTrigger value="html" className="gap-1">
                     <Code className="h-3.5 w-3.5" />
                     HTML
                   </TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                 </TabsList>
+                {campaign?.email_templates?.template_mode !== 'standalone_html' && (
                 <TabsContent value="editor">
                   <RichTextEditor
                     value={editingBody}
@@ -1562,6 +1585,7 @@ export default function CampaignDetailPage() {
                     minHeight="350px"
                   />
                 </TabsContent>
+                )}
                 <TabsContent value="html">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
@@ -1601,6 +1625,7 @@ export default function CampaignDetailPage() {
                   <EmailPreview
                     subject={editingSubject}
                     body={editingBody}
+                    templateMode={campaign?.email_templates?.template_mode || 'standard'}
                   />
                 </TabsContent>
               </Tabs>

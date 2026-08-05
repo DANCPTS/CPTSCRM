@@ -4,6 +4,7 @@ interface EmailPreviewProps {
   subject: string;
   body: string;
   recipientName?: string;
+  templateMode?: 'standard' | 'standalone_html';
 }
 
 function convertMarkdownToHtml(text: string): string {
@@ -15,17 +16,8 @@ function convertMarkdownToHtml(text: string): string {
     .replace(/\n/g, '<br>');
 }
 
-export function EmailPreview({ subject, body, recipientName = 'John' }: EmailPreviewProps) {
-  let personalizedBody = body
-    .replace(/\[Recipient's Name\]/g, recipientName)
-    .replace(/\[recipient's name\]/g, recipientName)
-    .replace(/\[First Name\]/g, recipientName)
-    .replace(/\[first name\]/g, recipientName)
-    .replace(/Dear \[.*?\]/g, `Dear ${recipientName}`);
-
-  const htmlBody = convertMarkdownToHtml(personalizedBody);
-
-  const emailHtml = `
+function buildStandardEmailHtml(htmlBody: string): string {
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -59,6 +51,24 @@ export function EmailPreview({ subject, body, recipientName = 'John' }: EmailPre
     </body>
     </html>
   `;
+}
+
+export function EmailPreview({ subject, body, recipientName = 'John', templateMode = 'standard' }: EmailPreviewProps) {
+  let emailHtml: string;
+
+  if (templateMode === 'standalone_html') {
+    emailHtml = body;
+  } else {
+    let personalizedBody = body
+      .replace(/\[Recipient's Name\]/g, recipientName)
+      .replace(/\[recipient's name\]/g, recipientName)
+      .replace(/\[First Name\]/g, recipientName)
+      .replace(/\[first name\]/g, recipientName)
+      .replace(/Dear \[.*?\]/g, `Dear ${recipientName}`);
+
+    const htmlBody = convertMarkdownToHtml(personalizedBody);
+    emailHtml = buildStandardEmailHtml(htmlBody);
+  }
 
   return (
     <div className="space-y-4">
@@ -83,6 +93,7 @@ export function EmailPreview({ subject, body, recipientName = 'John' }: EmailPre
           className="w-full border-0"
           style={{ minHeight: '500px', height: '100%' }}
           title="Email Preview"
+          sandbox="allow-same-origin"
         />
       </div>
     </div>

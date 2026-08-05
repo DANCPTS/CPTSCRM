@@ -61,6 +61,7 @@ export default function MarketingPage() {
   const [templateSubject, setTemplateSubject] = useState('');
   const [templateBody, setTemplateBody] = useState('');
   const [templateCategory, setTemplateCategory] = useState('general');
+  const [templateMode, setTemplateMode] = useState<'standard' | 'standalone_html'>('standard');
 
   // Campaign form
   const [campaignName, setCampaignName] = useState('');
@@ -185,6 +186,7 @@ export default function MarketingPage() {
           subject: templateSubject,
           body: templateBody,
           category: templateCategory,
+          template_mode: templateMode,
           created_by: user.id,
         });
 
@@ -477,6 +479,7 @@ export default function MarketingPage() {
     setTemplateSubject('');
     setTemplateBody('');
     setTemplateCategory('general');
+    setTemplateMode('standard');
     setAiRefinePrompt('');
   };
 
@@ -565,6 +568,7 @@ export default function MarketingPage() {
     setTemplateSubject(template.subject);
     setTemplateBody(template.body);
     setTemplateCategory(template.category || 'general');
+    setTemplateMode(template.template_mode || 'standard');
     setEditTemplateDialogOpen(true);
   };
 
@@ -583,6 +587,7 @@ export default function MarketingPage() {
           subject: templateSubject,
           body: templateBody,
           category: templateCategory,
+          template_mode: templateMode,
         })
         .eq('id', editingTemplateId);
 
@@ -612,6 +617,7 @@ export default function MarketingPage() {
           subject: templateSubject || '',
           body: templateBody || '',
           category: templateCategory,
+          template_mode: templateMode,
         })
         .eq('id', editingTemplateId);
       toast.success('Template changes saved');
@@ -1085,6 +1091,7 @@ export default function MarketingPage() {
                   subject: templateSubject || '',
                   body: templateBody || '',
                   category: templateCategory,
+                  template_mode: templateMode,
                   created_by: user.id,
                 });
               toast.success('Template saved as draft');
@@ -1180,17 +1187,29 @@ export default function MarketingPage() {
               </div>
             )}
 
+            {templateMode === 'standalone_html' && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <FileCode2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  This is an imported HTML template. It will be sent as a complete standalone email without the standard CRM header, footer, or wrapper.
+                </p>
+              </div>
+            )}
+
             <div>
               <Label>Email Body</Label>
-              <Tabs defaultValue="editor" className="w-full mt-1">
+              <Tabs defaultValue={templateMode === 'standalone_html' ? 'html' : 'editor'} className="w-full mt-1">
                 <TabsList className="mb-2">
-                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  {templateMode !== 'standalone_html' && (
+                    <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  )}
                   <TabsTrigger value="html" className="gap-1">
                     <Code className="h-3.5 w-3.5" />
                     HTML
                   </TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                 </TabsList>
+                {templateMode !== 'standalone_html' && (
                 <TabsContent value="editor">
                   <RichTextEditor
                     value={templateBody}
@@ -1199,6 +1218,7 @@ export default function MarketingPage() {
                     minHeight="250px"
                   />
                 </TabsContent>
+                )}
                 <TabsContent value="html">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
@@ -1238,6 +1258,7 @@ export default function MarketingPage() {
                   <EmailPreview
                     subject={templateSubject}
                     body={templateBody}
+                    templateMode={templateMode}
                   />
                 </TabsContent>
               </Tabs>
@@ -1475,6 +1496,7 @@ export default function MarketingPage() {
             <EmailPreview
               subject={previewTemplate?.subject || ''}
               body={previewTemplate?.body || ''}
+              templateMode={previewTemplate?.template_mode || 'standard'}
             />
           </div>
         </DialogContent>
@@ -1569,17 +1591,29 @@ export default function MarketingPage() {
               </div>
             </div>
 
+            {templateMode === 'standalone_html' && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <FileCode2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  This is an imported HTML template. It will be sent as a complete standalone email without the standard CRM header, footer, or wrapper.
+                </p>
+              </div>
+            )}
+
             <div>
               <Label>Email Body</Label>
-              <Tabs defaultValue="editor" className="w-full mt-1">
+              <Tabs defaultValue={templateMode === 'standalone_html' ? 'html' : 'editor'} className="w-full mt-1">
                 <TabsList className="mb-2">
-                  <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  {templateMode !== 'standalone_html' && (
+                    <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                  )}
                   <TabsTrigger value="html" className="gap-1">
                     <Code className="h-3.5 w-3.5" />
                     HTML
                   </TabsTrigger>
                   <TabsTrigger value="preview">Preview</TabsTrigger>
                 </TabsList>
+                {templateMode !== 'standalone_html' && (
                 <TabsContent value="editor">
                   <RichTextEditor
                     value={templateBody}
@@ -1588,6 +1622,7 @@ export default function MarketingPage() {
                     minHeight="300px"
                   />
                 </TabsContent>
+                )}
                 <TabsContent value="html">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
@@ -1627,6 +1662,7 @@ export default function MarketingPage() {
                   <EmailPreview
                     subject={templateSubject}
                     body={templateBody}
+                    templateMode={templateMode}
                   />
                 </TabsContent>
               </Tabs>
@@ -1707,6 +1743,7 @@ export default function MarketingPage() {
           setTemplateSubject(data.subject);
           setTemplateBody(data.html);
           setTemplateCategory('general');
+          setTemplateMode(data.templateMode);
           setEditingTemplateId(null);
           setTemplateDialogOpen(true);
           toast.success('Template imported - review and save it below');

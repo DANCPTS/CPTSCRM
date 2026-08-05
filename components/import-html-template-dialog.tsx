@@ -9,19 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Globe, Upload, Loader as Loader2, Eye, Smartphone, Monitor, Code, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, FileCode2, ArrowLeft, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { Globe, Upload, Loader as Loader2, Smartphone, Monitor, Code, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, FileCode2, ArrowLeft } from 'lucide-react';
 
 // --- HTML Sanitization & Processing ---
 
 const DANGEROUS_TAGS = [
   'script', 'iframe', 'frame', 'frameset', 'object', 'embed',
   'applet', 'form', 'input', 'select', 'button', 'textarea',
-  'noscript', 'base', 'meta',
+  'noscript',
 ];
 
 const EVENT_HANDLER_RE = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-const JAVASCRIPT_URL_RE = /javascript\s*:/gi;
 
 function sanitizeHtml(rawHtml: string, baseUrl?: string): {
   html: string;
@@ -55,9 +53,6 @@ function sanitizeHtml(rawHtml: string, baseUrl?: string): {
   }
   html = html.replace(EVENT_HANDLER_RE, '');
 
-  if (JAVASCRIPT_URL_RE.test(html)) {
-    warnings.push('Removed javascript: URLs');
-  }
   html = html.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
   html = html.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""');
   html = html.replace(/action\s*=\s*["']javascript:[^"']*["']/gi, 'action=""');
@@ -112,24 +107,6 @@ function sanitizeHtml(rawHtml: string, baseUrl?: string): {
   return { html, title, warnings };
 }
 
-function extractBodyContent(html: string): string {
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  if (bodyMatch) {
-    return bodyMatch[1].trim();
-  }
-  if (/<html/i.test(html)) {
-    return html.replace(/<html[^>]*>/i, '').replace(/<\/html>/i, '').trim();
-  }
-  return html;
-}
-
-function extractFullEmailHtml(html: string): string {
-  if (/<html/i.test(html)) {
-    return html;
-  }
-  return html;
-}
-
 // --- Component ---
 
 interface ImportHtmlTemplateDialogProps {
@@ -141,6 +118,7 @@ interface ImportHtmlTemplateDialogProps {
     name: string;
     sourceUrl: string | null;
     generationMode: string;
+    templateMode: 'standalone_html';
   }) => void;
 }
 
@@ -158,7 +136,6 @@ export function ImportHtmlTemplateDialog({
   const [error, setError] = useState<string | null>(null);
 
   const [sanitizedHtml, setSanitizedHtml] = useState('');
-  const [fullHtml, setFullHtml] = useState('');
   const [detectedTitle, setDetectedTitle] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
@@ -176,7 +153,6 @@ export function ImportHtmlTemplateDialog({
     setLoading(false);
     setError(null);
     setSanitizedHtml('');
-    setFullHtml('');
     setDetectedTitle(null);
     setWarnings([]);
     setSourceUrl(null);
@@ -193,11 +169,8 @@ export function ImportHtmlTemplateDialog({
 
   const processHtml = (rawHtml: string, baseUrl?: string, fileName?: string) => {
     const result = sanitizeHtml(rawHtml, baseUrl);
-    const bodyContent = extractBodyContent(result.html);
-    const full = extractFullEmailHtml(result.html);
 
-    setSanitizedHtml(bodyContent);
-    setFullHtml(full);
+    setSanitizedHtml(result.html);
     setDetectedTitle(result.title);
     setWarnings(result.warnings);
     setSourceUrl(baseUrl || null);
@@ -292,27 +265,25 @@ export function ImportHtmlTemplateDialog({
       name: templateName,
       sourceUrl,
       generationMode,
+      templateMode: 'standalone_html',
     });
     handleOpenChange(false);
   };
 
-  const renderPreviewFrame = (width: string) => {
-    const previewHtml = fullHtml || sanitizedHtml;
-    return (
-      <div
-        className="border rounded-lg overflow-hidden bg-white mx-auto transition-all duration-300"
-        style={{ width, maxWidth: '100%' }}
-      >
-        <iframe
-          srcDoc={previewHtml}
-          title="Email preview"
-          sandbox="allow-same-origin"
-          className="w-full border-0"
-          style={{ height: '500px', pointerEvents: 'none' }}
-        />
-      </div>
-    );
-  };
+  const renderPreviewFrame = (width: string) => (
+    <div
+      className="border rounded-lg overflow-hidden bg-white mx-auto transition-all duration-300"
+      style={{ width, maxWidth: '100%' }}
+    >
+      <iframe
+        srcDoc={sanitizedHtml}
+        title="Email preview"
+        sandbox="allow-same-origin"
+        className="w-full border-0"
+        style={{ height: '500px', pointerEvents: 'none' }}
+      />
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

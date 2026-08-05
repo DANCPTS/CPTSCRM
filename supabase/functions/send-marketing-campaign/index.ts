@@ -36,6 +36,96 @@ function wrapLinksWithTracking(html: string, recipientId: string, supabaseUrl: s
   );
 }
 
+function personalizeContent(body: string, firstName: string): string {
+  return body
+    .replace(/\[Recipient's Name\]/g, firstName)
+    .replace(/\[recipient's name\]/g, firstName)
+    .replace(/\[First Name\]/g, firstName)
+    .replace(/\[first name\]/g, firstName)
+    .replace(/Dear \[.*?\]/g, `Dear ${firstName}`)
+    .replace(/\{\{first_name\}\}/gi, firstName);
+}
+
+function buildStandardEmailHtml(
+  trackedHtmlBody: string,
+  subject: string,
+  emailSettings: MarketingEmailSettings,
+  trackingPixelUrl: string,
+  unsubscribeUrl: string
+): string {
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#333333;background-color:#f4f4f4;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">
+    <tr>
+      <td align="center" style="padding:20px 10px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:4px;overflow:hidden;">
+          <tr>
+            <td style="background-color:#0f3d5e;padding:30px 20px;text-align:center;">
+              <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training Courses" width="250" style="max-width:250px;height:auto;display:block;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:30px;background-color:#ffffff;">
+              ${trackedHtmlBody}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px;text-align:center;font-size:12px;color:#666666;border-top:1px solid #eeeeee;">
+              <p style="margin:0 0 5px;"><strong>${emailSettings.from_name}</strong></p>
+              <p style="margin:0 0 5px;">01234 604 151 | ${emailSettings.from_email}</p>
+              <p style="margin:0 0 15px;">cpcs-training-courses.co.uk</p>
+              <p style="margin:0;padding-top:15px;border-top:1px solid #eeeeee;">
+                <a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;font-size:11px;">Unsubscribe from marketing emails</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />
+</body>
+</html>`;
+}
+
+function buildStandaloneEmailHtml(
+  trackedBody: string,
+  trackingPixelUrl: string,
+  unsubscribeUrl: string
+): string {
+  let html = trackedBody;
+
+  const hasUnsubscribe = /unsubscribe/i.test(html);
+  if (!hasUnsubscribe) {
+    const unsubBlock = `<div style="text-align:center;padding:10px;font-size:11px;color:#999999;"><a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;">Unsubscribe</a></div>`;
+    if (/<\/body>/i.test(html)) {
+      html = html.replace(/<\/body>/i, `${unsubBlock}</body>`);
+    } else {
+      html += unsubBlock;
+    }
+  } else {
+    html = html.replace(
+      /\{\{unsubscribe_url\}\}/gi,
+      unsubscribeUrl
+    );
+  }
+
+  const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;
+  if (/<\/body>/i.test(html)) {
+    html = html.replace(/<\/body>/i, `${trackingPixel}</body>`);
+  } else {
+    html += trackingPixel;
+  }
+
+  return html;
+}
+
 const BATCH_SIZE = 5;
 const DELAY_BETWEEN_EMAILS_MS = 300;
 const MAX_RETRIES_ON_RATE_LIMIT = 3;
@@ -138,6 +228,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const templateMode = campaign.email_templates?.template_mode || "standard";
+
     const allUnsubscribed: any[] = [];
     let unsubPage = 0;
     let unsubHasMore = true;
@@ -219,65 +311,46 @@ Deno.serve(async (req: Request) => {
         }
 
         const firstName = recipient.name.split(' ')[0] || recipient.name;
-
-        let personalizedBody = campaign.email_templates.body
-          .replace(/\[Recipient's Name\]/g, firstName)
-          .replace(/\[recipient's name\]/g, firstName)
-          .replace(/\[First Name\]/g, firstName)
-          .replace(/\[first name\]/g, firstName)
-          .replace(/Dear \[.*?\]/g, `Dear ${firstName}`);
-
-        const htmlBody = convertMarkdownToHtml(personalizedBody);
-        const trackedHtmlBody = wrapLinksWithTracking(htmlBody, recipient.id, supabaseUrl);
-
         const trackingPixelUrl = `${supabaseUrl}/functions/v1/track-email-open?rid=${recipient.id}&t=${Date.now()}`;
         const unsubscribeUrl = `${supabaseUrl}/functions/v1/email-unsubscribe?rid=${recipient.id}`;
 
-        const emailHtml = `<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${campaign.email_templates.subject}</title>
-</head>
-<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;line-height:1.6;color:#333333;background-color:#f4f4f4;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">
-    <tr>
-      <td align="center" style="padding:20px 10px;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:4px;overflow:hidden;">
-          <tr>
-            <td style="background-color:#0f3d5e;padding:30px 20px;text-align:center;">
-              <img src="https://www.cpcs-training-courses.co.uk/wp-content/uploads/2023/02/cpcs-training-courses-logo.png" alt="CPCS Training Courses" width="250" style="max-width:250px;height:auto;display:block;margin:0 auto;" />
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:30px;background-color:#ffffff;">
-              ${trackedHtmlBody}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px;text-align:center;font-size:12px;color:#666666;border-top:1px solid #eeeeee;">
-              <p style="margin:0 0 5px;"><strong>${emailSettings.from_name}</strong></p>
-              <p style="margin:0 0 5px;">01234 604 151 | ${emailSettings.from_email}</p>
-              <p style="margin:0 0 15px;">cpcs-training-courses.co.uk</p>
-              <p style="margin:0;padding-top:15px;border-top:1px solid #eeeeee;">
-                <a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;font-size:11px;">Unsubscribe from marketing emails</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-  <img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />
-</body>
-</html>`;
+        let emailHtml: string;
+        let plainTextBody: string;
 
-        const plainTextBody = personalizedBody
-          .replace(/\*\*([^*]+)\*\*/g, '$1')
-          .replace(/\*([^*]+)\*/g, '$1')
-          .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
-          .replace(/\[([^\]]+)\]\(#\)/g, '$1');
+        if (templateMode === "standalone_html") {
+          let personalizedBody = personalizeContent(campaign.email_templates.body, firstName);
+          if (recipient.company_name) {
+            personalizedBody = personalizedBody.replace(/\{\{company_name\}\}/gi, recipient.company_name);
+          }
+          const trackedBody = wrapLinksWithTracking(personalizedBody, recipient.id, supabaseUrl);
+          emailHtml = buildStandaloneEmailHtml(trackedBody, trackingPixelUrl, unsubscribeUrl);
+
+          plainTextBody = personalizedBody
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/\s+/g, ' ')
+            .trim();
+        } else {
+          let personalizedBody = personalizeContent(campaign.email_templates.body, firstName);
+          const htmlBody = convertMarkdownToHtml(personalizedBody);
+          const trackedHtmlBody = wrapLinksWithTracking(htmlBody, recipient.id, supabaseUrl);
+          emailHtml = buildStandardEmailHtml(
+            trackedHtmlBody,
+            campaign.email_templates.subject,
+            emailSettings,
+            trackingPixelUrl,
+            unsubscribeUrl
+          );
+
+          plainTextBody = personalizedBody
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/\*([^*]+)\*/g, '$1')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1: $2')
+            .replace(/\[([^\]]+)\]\(#\)/g, '$1');
+        }
 
         let resendResponse: Response | null = null;
         let resendResult: any = null;
