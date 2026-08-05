@@ -15,7 +15,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { prompt, existingSubject, existingBody, templateHtml, generationMode } = await req.json();
+    const { prompt, existingSubject, existingBody, templateHtml, generationMode, templateMode } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -38,12 +38,39 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const isStandalone = templateMode === "standalone_html";
     const isModification = existingSubject || existingBody;
     const hasTemplate = templateHtml && generationMode;
 
     let systemPrompt: string;
 
-    if (hasTemplate && generationMode === "rewrite_content") {
+    if (isStandalone && isModification) {
+      systemPrompt = `You are an expert email developer editing a standalone HTML email document for CPCS Training Courses.
+
+CURRENT COMPLETE HTML EMAIL:
+${existingBody}
+
+CURRENT SUBJECT: ${existingSubject || '(no subject)'}
+
+CRITICAL RULES:
+- This is a STANDALONE imported HTML email. Do NOT add any CRM wrapper, standard header, standard footer, or branding that is not already in the document.
+- Make ONLY the changes the user requests. Do not rewrite, restructure, or reformat anything else.
+- Preserve the COMPLETE HTML document structure: <!DOCTYPE>, <html>, <head>, <meta>, <style> blocks, <body>, tables, inline CSS, media queries, images, links, the document's own header and footer.
+- Do NOT remove or modify existing working links unless the user specifically asks.
+- Do NOT invent destination URLs. If the user asks you to link a button but does not provide a URL, use href="#" and note in the subject that the URL needs to be set.
+- Buttons must use email-safe <a href="..."> links, never JavaScript or onclick.
+- Preserve any personalisation variables like {{first_name}}, {{company_name}}, {{unsubscribe_url}}.
+- Do NOT invent prices, statistics, testimonials, guarantees, or legal claims.
+- Return VALID email HTML. No Markdown. No code fences.
+
+Return ONLY a JSON object:
+{
+  "subject": "The subject line (keep unchanged unless the user asked to change it)",
+  "body": "The COMPLETE standalone HTML email document with edits applied"
+}
+
+Do not include any other text outside the JSON object.`;
+    } else if (hasTemplate && generationMode === "rewrite_content") {
       systemPrompt = `You are an expert email marketing copywriter for CPCS Training Courses, a professional training company that provides construction equipment training and certification.
 
 You have been given an imported HTML email template. Your task is to REPLACE the marketing copy while PRESERVING the original HTML structure, layout, formatting, section order, buttons, links, and responsive behaviour.
@@ -133,7 +160,7 @@ Generate both an email subject line and email body. Return ONLY a JSON object wi
 Do not include any other text outside the JSON object.`;
     }
 
-    const maxTokens = hasTemplate ? 4000 : 1000;
+    const maxTokens = (isStandalone || hasTemplate) ? 4000 : 1000;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",

@@ -18,6 +18,7 @@ import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
 import { AudienceDialog } from '@/components/audience-dialog';
 import { ImportHtmlTemplateDialog } from '@/components/import-html-template-dialog';
+import { StandaloneHtmlEditor } from '@/components/standalone-html-editor';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -62,6 +63,7 @@ export default function MarketingPage() {
   const [templateBody, setTemplateBody] = useState('');
   const [templateCategory, setTemplateCategory] = useState('general');
   const [templateMode, setTemplateMode] = useState<'standard' | 'standalone_html'>('standard');
+  const [originalImportedHtml, setOriginalImportedHtml] = useState<string>('');
 
   // Campaign form
   const [campaignName, setCampaignName] = useState('');
@@ -480,6 +482,7 @@ export default function MarketingPage() {
     setTemplateBody('');
     setTemplateCategory('general');
     setTemplateMode('standard');
+    setOriginalImportedHtml('');
     setAiRefinePrompt('');
   };
 
@@ -1146,123 +1149,122 @@ export default function MarketingPage() {
               />
             </div>
 
-            {(templateSubject || templateBody) && (
-              <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
-                <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Refine with AI
-                </label>
-                <p className="text-xs text-blue-700 mb-3">
-                  Describe how you want to change the email (e.g., "make it shorter", "add urgency", "include a discount")
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={aiRefinePrompt}
-                    onChange={(e) => setAiRefinePrompt(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
-                    placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
-                    className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-                    disabled={aiRefining}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleRefineWithAI}
-                    disabled={aiRefining || !aiRefinePrompt.trim()}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {aiRefining ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Refining...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Apply
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {templateMode === 'standalone_html' && (
-              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <FileCode2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
-                  This is an imported HTML template. It will be sent as a complete standalone email without the standard CRM header, footer, or wrapper.
-                </p>
-              </div>
-            )}
-
-            <div>
-              <Label>Email Body</Label>
-              <Tabs defaultValue={templateMode === 'standalone_html' ? 'html' : 'editor'} className="w-full mt-1">
-                <TabsList className="mb-2">
-                  {templateMode !== 'standalone_html' && (
-                    <TabsTrigger value="editor">Visual Editor</TabsTrigger>
-                  )}
-                  <TabsTrigger value="html" className="gap-1">
-                    <Code className="h-3.5 w-3.5" />
-                    HTML
-                  </TabsTrigger>
-                  <TabsTrigger value="preview">Preview</TabsTrigger>
-                </TabsList>
-                {templateMode !== 'standalone_html' && (
-                <TabsContent value="editor">
-                  <RichTextEditor
-                    value={templateBody}
-                    onChange={setTemplateBody}
-                    placeholder="Write your email content here..."
-                    minHeight="250px"
-                  />
-                </TabsContent>
-                )}
-                <TabsContent value="html">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Image className="h-4 w-4" />
-                        <span>Add images using HTML or upload directly</span>
-                      </div>
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          disabled={uploadingImage}
-                        />
-                        <Button type="button" variant="outline" size="sm" disabled={uploadingImage} asChild>
-                          <span>
-                            {uploadingImage ? (
-                              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                            ) : (
-                              <Upload className="h-4 w-4 mr-1.5" />
-                            )}
-                            {uploadingImage ? 'Uploading...' : 'Upload Image'}
-                          </span>
-                        </Button>
-                      </label>
+            {templateMode === 'standalone_html' ? (
+              <StandaloneHtmlEditor
+                html={templateBody}
+                onChange={setTemplateBody}
+                subject={templateSubject}
+                onSubjectChange={setTemplateSubject}
+                originalHtml={originalImportedHtml}
+              />
+            ) : (
+              <>
+                {(templateSubject || templateBody) && (
+                  <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+                    <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Refine with AI
+                    </label>
+                    <p className="text-xs text-blue-700 mb-3">
+                      Describe how you want to change the email (e.g., &quot;make it shorter&quot;, &quot;add urgency&quot;, &quot;include a discount&quot;)
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={aiRefinePrompt}
+                        onChange={(e) => setAiRefinePrompt(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
+                        placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
+                        className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                        disabled={aiRefining}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleRefineWithAI}
+                        disabled={aiRefining || !aiRefinePrompt.trim()}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        {aiRefining ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Refining...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Apply
+                          </>
+                        )}
+                      </Button>
                     </div>
-                    <Textarea
-                      value={templateBody}
-                      onChange={(e) => setTemplateBody(e.target.value)}
-                      placeholder="Enter your HTML content here..."
-                      className="font-mono text-sm min-h-[300px] resize-y"
-                    />
                   </div>
-                </TabsContent>
-                <TabsContent value="preview">
-                  <EmailPreview
-                    subject={templateSubject}
-                    body={templateBody}
-                    templateMode={templateMode}
-                  />
-                </TabsContent>
-              </Tabs>
-            </div>
+                )}
+
+                <div>
+                  <Label>Email Body</Label>
+                  <Tabs defaultValue="editor" className="w-full mt-1">
+                    <TabsList className="mb-2">
+                      <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                      <TabsTrigger value="html" className="gap-1">
+                        <Code className="h-3.5 w-3.5" />
+                        HTML
+                      </TabsTrigger>
+                      <TabsTrigger value="preview">Preview</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="editor">
+                      <RichTextEditor
+                        value={templateBody}
+                        onChange={setTemplateBody}
+                        placeholder="Write your email content here..."
+                        minHeight="250px"
+                      />
+                    </TabsContent>
+                    <TabsContent value="html">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
+                          <div className="flex items-center gap-2 text-sm text-slate-500">
+                            <Image className="h-4 w-4" />
+                            <span>Add images using HTML or upload directly</span>
+                          </div>
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                              disabled={uploadingImage}
+                            />
+                            <Button type="button" variant="outline" size="sm" disabled={uploadingImage} asChild>
+                              <span>
+                                {uploadingImage ? (
+                                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                ) : (
+                                  <Upload className="h-4 w-4 mr-1.5" />
+                                )}
+                                {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                              </span>
+                            </Button>
+                          </label>
+                        </div>
+                        <Textarea
+                          value={templateBody}
+                          onChange={(e) => setTemplateBody(e.target.value)}
+                          placeholder="Enter your HTML content here..."
+                          className="font-mono text-sm min-h-[300px] resize-y"
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="preview">
+                      <EmailPreview
+                        subject={templateSubject}
+                        body={templateBody}
+                        templateMode={templateMode}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
@@ -1552,121 +1554,120 @@ export default function MarketingPage() {
               />
             </div>
 
-            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
-              <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
-                <Sparkles className="h-4 w-4" />
-                Refine with AI
-              </label>
-              <p className="text-xs text-blue-700 mb-3">
-                Describe how you want to change the email (e.g., "make it shorter", "add urgency", "include a discount")
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={aiRefinePrompt}
-                  onChange={(e) => setAiRefinePrompt(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
-                  placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
-                  className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
-                  disabled={aiRefining}
-                />
-                <Button
-                  type="button"
-                  onClick={handleRefineWithAI}
-                  disabled={aiRefining || !aiRefinePrompt.trim()}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {aiRefining ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Refining...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Apply
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {templateMode === 'standalone_html' && (
-              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <FileCode2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
-                  This is an imported HTML template. It will be sent as a complete standalone email without the standard CRM header, footer, or wrapper.
-                </p>
-              </div>
-            )}
-
-            <div>
-              <Label>Email Body</Label>
-              <Tabs defaultValue={templateMode === 'standalone_html' ? 'html' : 'editor'} className="w-full mt-1">
-                <TabsList className="mb-2">
-                  {templateMode !== 'standalone_html' && (
-                    <TabsTrigger value="editor">Visual Editor</TabsTrigger>
-                  )}
-                  <TabsTrigger value="html" className="gap-1">
-                    <Code className="h-3.5 w-3.5" />
-                    HTML
-                  </TabsTrigger>
-                  <TabsTrigger value="preview">Preview</TabsTrigger>
-                </TabsList>
-                {templateMode !== 'standalone_html' && (
-                <TabsContent value="editor">
-                  <RichTextEditor
-                    value={templateBody}
-                    onChange={setTemplateBody}
-                    placeholder="Write your email content here..."
-                    minHeight="300px"
-                  />
-                </TabsContent>
-                )}
-                <TabsContent value="html">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Image className="h-4 w-4" />
-                        <span>Add images using HTML or upload directly</span>
-                      </div>
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          disabled={uploadingImage}
-                        />
-                        <Button type="button" variant="outline" size="sm" disabled={uploadingImage} asChild>
-                          <span>
-                            {uploadingImage ? (
-                              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                            ) : (
-                              <Upload className="h-4 w-4 mr-1.5" />
-                            )}
-                            {uploadingImage ? 'Uploading...' : 'Upload Image'}
-                          </span>
-                        </Button>
-                      </label>
-                    </div>
-                    <Textarea
-                      value={templateBody}
-                      onChange={(e) => setTemplateBody(e.target.value)}
-                      placeholder="Enter your HTML content here..."
-                      className="font-mono text-sm min-h-[350px] resize-y"
+            {templateMode === 'standalone_html' ? (
+              <StandaloneHtmlEditor
+                html={templateBody}
+                onChange={setTemplateBody}
+                subject={templateSubject}
+                onSubjectChange={setTemplateSubject}
+                originalHtml={originalImportedHtml}
+              />
+            ) : (
+              <>
+                <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+                  <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    Refine with AI
+                  </label>
+                  <p className="text-xs text-blue-700 mb-3">
+                    Describe how you want to change the email (e.g., &quot;make it shorter&quot;, &quot;add urgency&quot;, &quot;include a discount&quot;)
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={aiRefinePrompt}
+                      onChange={(e) => setAiRefinePrompt(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !aiRefining && handleRefineWithAI()}
+                      placeholder="e.g., Make the tone more friendly and add a 10% discount mention..."
+                      className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                      disabled={aiRefining}
                     />
+                    <Button
+                      type="button"
+                      onClick={handleRefineWithAI}
+                      disabled={aiRefining || !aiRefinePrompt.trim()}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {aiRefining ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Refining...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Apply
+                        </>
+                      )}
+                    </Button>
                   </div>
-                </TabsContent>
-                <TabsContent value="preview">
-                  <EmailPreview
-                    subject={templateSubject}
-                    body={templateBody}
-                    templateMode={templateMode}
-                  />
-                </TabsContent>
-              </Tabs>
-            </div>
+                </div>
+
+                <div>
+                  <Label>Email Body</Label>
+                  <Tabs defaultValue="editor" className="w-full mt-1">
+                    <TabsList className="mb-2">
+                      <TabsTrigger value="editor">Visual Editor</TabsTrigger>
+                      <TabsTrigger value="html" className="gap-1">
+                        <Code className="h-3.5 w-3.5" />
+                        HTML
+                      </TabsTrigger>
+                      <TabsTrigger value="preview">Preview</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="editor">
+                      <RichTextEditor
+                        value={templateBody}
+                        onChange={setTemplateBody}
+                        placeholder="Write your email content here..."
+                        minHeight="300px"
+                      />
+                    </TabsContent>
+                    <TabsContent value="html">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border">
+                          <div className="flex items-center gap-2 text-sm text-slate-500">
+                            <Image className="h-4 w-4" />
+                            <span>Add images using HTML or upload directly</span>
+                          </div>
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageUpload}
+                              className="hidden"
+                              disabled={uploadingImage}
+                            />
+                            <Button type="button" variant="outline" size="sm" disabled={uploadingImage} asChild>
+                              <span>
+                                {uploadingImage ? (
+                                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                ) : (
+                                  <Upload className="h-4 w-4 mr-1.5" />
+                                )}
+                                {uploadingImage ? 'Uploading...' : 'Upload Image'}
+                              </span>
+                            </Button>
+                          </label>
+                        </div>
+                        <Textarea
+                          value={templateBody}
+                          onChange={(e) => setTemplateBody(e.target.value)}
+                          placeholder="Enter your HTML content here..."
+                          className="font-mono text-sm min-h-[350px] resize-y"
+                        />
+                      </div>
+                    </TabsContent>
+                    <TabsContent value="preview">
+                      <EmailPreview
+                        subject={templateSubject}
+                        body={templateBody}
+                        templateMode={templateMode}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button variant="outline" onClick={() => {
@@ -1744,9 +1745,10 @@ export default function MarketingPage() {
           setTemplateBody(data.html);
           setTemplateCategory('general');
           setTemplateMode(data.templateMode);
+          setOriginalImportedHtml(data.html);
           setEditingTemplateId(null);
           setTemplateDialogOpen(true);
-          toast.success('Template imported - review and save it below');
+          toast.success('Template imported - review and edit it below');
         }}
       />
     </AppShell>
