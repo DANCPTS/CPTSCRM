@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck, Link as Link2Icon } from 'lucide-react';
+import { Code, Eye, Link2 as LinkIcon, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { VisualEmailEditor } from '@/components/visual-email-editor';
 
@@ -669,7 +669,7 @@ export function StandaloneHtmlEditor({
             variant="outline"
             className="border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shrink-0"
           >
-            <Link2Icon className="h-3.5 w-3.5" />
+            <LinkIcon className="h-3.5 w-3.5" />
             {currentHtmlHasUnsubscribe ? 'View Link' : 'Add Unsubscribe'}
           </Button>
           <Button
@@ -783,7 +783,7 @@ export function StandaloneHtmlEditor({
             Preview
           </TabsTrigger>
           <TabsTrigger value="links" className="gap-1.5">
-            <Link2 className="h-3.5 w-3.5" />
+            <LinkIcon className="h-3.5 w-3.5" />
             Links & Buttons
             {missingDestLinks.length > 0 && (
               <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
@@ -926,7 +926,7 @@ export function StandaloneHtmlEditor({
         <TabsContent value="links" className="mt-3">
           {parsedLinks.length === 0 ? (
             <div className="text-center py-12 text-slate-500">
-              <Link2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <LinkIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">No links found</p>
               <p className="text-xs mt-1">Add links in the HTML tab or ask the AI to insert them.</p>
             </div>
