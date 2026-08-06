@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Eye, Link2 as LinkIcon, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck } from 'lucide-react';
+import { Code, Eye, Link2 as LinkIcon, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck, Crosshair } from 'lucide-react';
 import { toast } from 'sonner';
 import { VisualEmailEditor } from '@/components/visual-email-editor';
 
@@ -396,6 +396,256 @@ export function StandaloneHtmlEditor({
     setEditingLinkHref('');
   };
 
+  // --- Unsubscribe detection ---
+
+  const PREVIEW_UNSUBSCRIBE_URL = '#unsubscribe-preview';
+  const UNSUB_TAG = '{{unsubscribe_url}}';
+  const UNSUB_TAG_RE = /\{\{unsubscribe_url\}\}/i;
+  const UNSUB_TAG_RE_G = /\{\{unsubscribe_url\}\}/gi;
+
+  const hasUnsubscribeTag = useCallback((source: string) => UNSUB_TAG_RE.test(source), []);
+  const replaceUnsubscribeForPreview = useCallback(
+    (source: string) => source.replace(UNSUB_TAG_RE_G, PREVIEW_UNSUBSCRIBE_URL),
+    [],
+  );
+
+  const currentHtmlHasUnsubscribe = useMemo(() => {
+    const source = draftDirty.current ? draftHtml : html;
+    return hasUnsubscribeTag(source);
+  }, [html, draftHtml, hasUnsubscribeTag]);
+
+  // --- Placement mode for unsubscribe (fallback when footer not auto-detected) ---
+  const [placementMode, setPlacementMode] = useState(false);
+  const [pendingUnsubFooterHtml, setPendingUnsubFooterHtml] = useState<string | null>(null);
+  const [aiFooterRefining, setAiFooterRefining] = useState(false);
+
+  // --- Deterministic unsubscribe insertion ---
+
+  const FOOTER_PHRASES = [
+    /please include your unsubscribe link here/i,
+    /insert.*unsubscribe.*link/i,
+    /add.*unsubscribe.*here/i,
+    /opt\s*[-\s]?\s*out/i,
+    /stop receiving.*(?:marketing|these)\s*emails/i,
+  ];
+
+  const UNSUB_LINK_HTML = `<a href="${UNSUB_TAG}" style="color:#475569; text-decoration:underline;">Unsubscribe here</a>`;
+  const UNSUB_SENTENCE_HTML = `<p style="margin:8px 0 0; font-size:11px; line-height:16px; color:#64748b;">If you no longer wish to receive marketing emails, ${UNSUB_LINK_HTML}.</p>`;
+
+  const applyDeterministicResult = useCallback((newHtml: string, previousHtml: string) => {
+    pushUndo(previousHtml);
+    onChange(newHtml);
+    lastParentHtml.current = newHtml;
+    setDraftHtml(newHtml);
+    draftDirty.current = false;
+    toast.success('Unsubscribe link added successfully.');
+  }, [pushUndo, onChange]);
+
+  const insertUnsubscribeDeterministic = useCallback(() => {
+    const currentHtml = draftDirty.current ? draftHtml : html;
+
+    if (hasUnsubscribeTag(currentHtml)) {
+      handleTabChange('links');
+      toast.info('Your email already has an unsubscribe link — see the Links tab.');
+      return;
+    }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(currentHtml, 'text/html');
+
+    const existingLink = doc.querySelector('a[href*="unsubscribe"]');
+    if (existingLink) {
+      existingLink.setAttribute('href', UNSUB_TAG);
+      const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      applyDeterministicResult(serialized, currentHtml);
+      return;
+    }
+
+    const allElements = Array.from(doc.body.querySelectorAll('td, div, p, span, tr, table'));
+
+    for (const phrase of FOOTER_PHRASES) {
+      for (const el of allElements) {
+        const text = el.textContent || '';
+        if (phrase.test(text)) {
+          const innerHtml = el.innerHTML;
+          const match = innerHtml.match(phrase);
+          if (match) {
+            el.innerHTML = innerHtml.replace(match[0], UNSUB_LINK_HTML);
+          } else {
+            el.innerHTML = innerHtml + ' ' + UNSUB_LINK_HTML;
+          }
+          const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+          applyDeterministicResult(serialized, currentHtml);
+          return;
+        }
+      }
+    }
+
+    const footerCandidates = allElements.filter(el => {
+      const text = (el.textContent || '').toLowerCase();
+      return (
+        text.includes('©') ||
+        text.includes('copyright') ||
+        text.includes('all rights reserved') ||
+        text.includes('registered') ||
+        /\b\d{4}\b/.test(text) && text.length < 500
+      );
+    });
+
+    if (footerCandidates.length > 0) {
+      const footer = footerCandidates[footerCandidates.length - 1];
+      const wrapper = doc.createElement('div');
+      wrapper.innerHTML = UNSUB_SENTENCE_HTML;
+      const unsubEl = wrapper.firstElementChild!;
+      footer.appendChild(unsubEl);
+      const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      applyDeterministicResult(serialized, currentHtml);
+      return;
+    }
+
+    setPlacementMode(true);
+    handleTabChange('visual');
+    toast.info('Could not auto-detect the footer. Select the element where you want the unsubscribe link, then click "Insert Unsubscribe Link Here".');
+  }, [draftHtml, html, hasUnsubscribeTag, handleTabChange, applyDeterministicResult]);
+
+  // --- Optional AI footer-only wording refinement ---
+
+  const handleAiFooterRefine = useCallback(async () => {
+    const currentHtml = draftDirty.current ? draftHtml : html;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(currentHtml, 'text/html');
+
+    const unsubLink = doc.querySelector(`a[href="${UNSUB_TAG}"], a[href="{{unsubscribe_url}}"]`);
+    if (!unsubLink) {
+      toast.error('Add an unsubscribe link first before improving the footer wording.');
+      return;
+    }
+
+    let footerEl: Element | null = unsubLink.closest('td') || unsubLink.closest('div') || unsubLink.closest('p') || unsubLink.parentElement;
+    if (!footerEl) {
+      toast.error('Could not identify the footer container around the unsubscribe link.');
+      return;
+    }
+
+    const footerHtml = footerEl.outerHTML;
+
+    setAiFooterRefining(true);
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-marketing-email`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: `Improve the wording of this email footer. Make it professional and compliant. Keep it short. You MUST preserve the exact href="{{unsubscribe_url}}" link — do NOT change or remove it. Return ONLY the updated HTML fragment, no wrapping document. Current footer:\n\n${footerHtml}`,
+          existingSubject: subject,
+          existingBody: footerHtml,
+          templateMode: 'standalone_html',
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new AiError(
+          response.status === 401 ? 'auth' :
+          response.status === 413 ? 'size' :
+          response.status >= 500 ? 'server' : 'unknown',
+          `Server responded with ${response.status}${errorText ? ': ' + errorText.substring(0, 200) : ''}`,
+        );
+      }
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new AiError('unknown', result.error || 'AI returned an error');
+      }
+
+      let newFooterHtml = result.body || '';
+      if (!UNSUB_TAG_RE.test(newFooterHtml)) {
+        toast.error('AI removed the unsubscribe placeholder — change rejected to protect your compliance.');
+        return;
+      }
+
+      setPendingUnsubFooterHtml(newFooterHtml);
+      setActiveTab('preview');
+    } catch (error: any) {
+      handleAiErrorToast(error);
+    } finally {
+      setAiFooterRefining(false);
+    }
+  }, [draftHtml, html, subject]);
+
+  const acceptFooterRefine = useCallback(() => {
+    if (!pendingUnsubFooterHtml) return;
+    const currentHtml = draftDirty.current ? draftHtml : html;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(currentHtml, 'text/html');
+
+    const unsubLink = doc.querySelector(`a[href="${UNSUB_TAG}"], a[href="{{unsubscribe_url}}"]`);
+    if (!unsubLink) { setPendingUnsubFooterHtml(null); return; }
+
+    let footerEl = unsubLink.closest('td') || unsubLink.closest('div') || unsubLink.closest('p') || unsubLink.parentElement;
+    if (!footerEl) { setPendingUnsubFooterHtml(null); return; }
+
+    const wrapper = doc.createElement('div');
+    wrapper.innerHTML = pendingUnsubFooterHtml;
+    while (wrapper.firstChild) {
+      footerEl.parentNode!.insertBefore(wrapper.firstChild, footerEl);
+    }
+    footerEl.parentNode!.removeChild(footerEl);
+
+    const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+    applyDeterministicResult(serialized, currentHtml);
+    setPendingUnsubFooterHtml(null);
+    toast.success('Footer wording updated.');
+  }, [pendingUnsubFooterHtml, draftHtml, html, applyDeterministicResult]);
+
+  const discardFooterRefine = useCallback(() => {
+    setPendingUnsubFooterHtml(null);
+    toast.info('Footer wording change discarded.');
+  }, []);
+
+  // --- AI error classification ---
+
+  class AiError extends Error {
+    kind: 'timeout' | 'size' | 'auth' | 'server' | 'parse' | 'unknown';
+    constructor(kind: AiError['kind'], message: string) {
+      super(message);
+      this.kind = kind;
+    }
+  }
+
+  function handleAiErrorToast(error: any) {
+    console.error('AI error:', error);
+
+    if (error instanceof AiError) {
+      const labels: Record<AiError['kind'], string> = {
+        timeout: 'The AI request timed out. Try a simpler instruction or a shorter email.',
+        size: 'The email is too large for AI processing. Try editing a smaller section manually.',
+        auth: 'Authentication failed. Please reload the page and try again.',
+        server: 'The AI service is temporarily unavailable. Please try again in a moment.',
+        parse: 'The AI returned an invalid response. Please try again.',
+        unknown: error.message || 'An unknown error occurred.',
+      };
+      toast.error(labels[error.kind], { duration: 6000 });
+      return;
+    }
+
+    if (error?.name === 'AbortError') {
+      toast.error('The AI request timed out. Try a simpler instruction or a shorter email.', { duration: 6000 });
+      return;
+    }
+
+    toast.error('AI refinement failed: ' + (error?.message || 'Unknown error'), { duration: 5000 });
+  }
+
   // --- AI refinement ---
 
   const handleAiRefine = async () => {
@@ -404,7 +654,6 @@ export function StandaloneHtmlEditor({
       return;
     }
 
-    // Commit any draft edits first
     if (draftDirty.current && draftHtml !== html) {
       pushUndo(html);
       onChange(draftHtml);
@@ -413,10 +662,14 @@ export function StandaloneHtmlEditor({
     }
 
     const currentHtml = draftDirty.current ? draftHtml : html;
+    const previousHtml = currentHtml;
 
     setAiRefining(true);
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-marketing-email`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -429,11 +682,30 @@ export function StandaloneHtmlEditor({
           existingBody: currentHtml,
           templateMode: 'standalone_html',
         }),
+        signal: controller.signal,
       });
 
-      const result = await response.json();
+      clearTimeout(timeout);
 
-      if (response.ok && result.success) {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new AiError(
+          response.status === 401 ? 'auth' :
+          response.status === 413 ? 'size' :
+          response.status === 504 || response.status === 408 ? 'timeout' :
+          response.status >= 500 ? 'server' : 'unknown',
+          `Server responded with ${response.status}${errorText ? ': ' + errorText.substring(0, 200) : ''}`,
+        );
+      }
+
+      let result;
+      try {
+        result = await response.json();
+      } catch {
+        throw new AiError('parse', 'Could not parse the AI response.');
+      }
+
+      if (result.success) {
         setPendingAiResult({
           subject: result.subject,
           body: result.body,
@@ -441,11 +713,10 @@ export function StandaloneHtmlEditor({
         });
         setActiveTab('preview');
       } else {
-        toast.error('AI refinement failed: ' + (result.error || 'Unknown error'));
+        throw new AiError('unknown', result.error || 'Unknown error');
       }
     } catch (error: any) {
-      console.error('AI refinement error:', error);
-      toast.error('AI refinement failed. Please try again.');
+      handleAiErrorToast(error);
     } finally {
       setAiRefining(false);
     }
@@ -471,21 +742,6 @@ export function StandaloneHtmlEditor({
     setPendingAiResult(null);
     toast.info('AI changes discarded');
   };
-
-  const PREVIEW_UNSUBSCRIBE_URL = '#unsubscribe-preview';
-
-  const hasUnsubscribeTag = useCallback((source: string) => {
-    return /\{\{unsubscribe_url\}\}/i.test(source);
-  }, []);
-
-  const replaceUnsubscribeForPreview = useCallback((source: string) => {
-    return source.replace(/\{\{unsubscribe_url\}\}/gi, PREVIEW_UNSUBSCRIBE_URL);
-  }, []);
-
-  const currentHtmlHasUnsubscribe = useMemo(() => {
-    const source = draftDirty.current ? draftHtml : html;
-    return hasUnsubscribeTag(source);
-  }, [html, draftHtml, hasUnsubscribeTag]);
 
   // Build the preview HTML — sanitize a copy, never the live draft
   const previewHtml = useMemo(() => {
@@ -656,15 +912,7 @@ export function StandaloneHtmlEditor({
           />
           <Button
             type="button"
-            onClick={() => {
-              if (currentHtmlHasUnsubscribe) {
-                setActiveTab('links');
-                toast.info('Your email already has an unsubscribe link — highlighted in the Links tab.');
-                return;
-              }
-              setAiPrompt('Add an unsubscribe link to the existing footer. Use href="{{unsubscribe_url}}" and text "unsubscribe here". Preserve all existing footer content and styling.');
-              toast.info('Unsubscribe instruction ready — click Apply to let AI add it.');
-            }}
+            onClick={insertUnsubscribeDeterministic}
             disabled={aiRefining}
             variant="outline"
             className="border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shrink-0"
@@ -672,6 +920,21 @@ export function StandaloneHtmlEditor({
             <LinkIcon className="h-3.5 w-3.5" />
             {currentHtmlHasUnsubscribe ? 'View Link' : 'Add Unsubscribe'}
           </Button>
+          {currentHtmlHasUnsubscribe && (
+            <Button
+              type="button"
+              onClick={handleAiFooterRefine}
+              disabled={aiRefining || aiFooterRefining}
+              variant="outline"
+              className="border-blue-200 text-blue-600 hover:bg-blue-50 gap-1.5 shrink-0 text-xs"
+            >
+              {aiFooterRefining ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Refining footer...</>
+              ) : (
+                <><Sparkles className="h-3.5 w-3.5" /> Improve footer wording</>
+              )}
+            </Button>
+          )}
           <Button
             type="button"
             onClick={handleAiRefine}
@@ -720,6 +983,27 @@ export function StandaloneHtmlEditor({
             <Button size="sm" variant="outline" onClick={discardAiChanges}>
               <X className="h-4 w-4 mr-1.5" />
               Discard Changes
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Footer refine accept/discard */}
+      {pendingUnsubFooterHtml && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-4 w-4 text-blue-600" />
+            <p className="text-sm font-medium text-blue-900">Improved footer wording ready</p>
+          </div>
+          <div className="text-xs text-blue-700 mb-2 p-2 bg-white border border-blue-100 rounded font-mono overflow-x-auto max-h-24 overflow-y-auto" dangerouslySetInnerHTML={{ __html: replaceUnsubscribeForPreview(pendingUnsubFooterHtml) }} />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={acceptFooterRefine} className="bg-blue-600 hover:bg-blue-700">
+              <CheckCircle2 className="h-4 w-4 mr-1.5" />
+              Accept Footer
+            </Button>
+            <Button size="sm" variant="outline" onClick={discardFooterRefine}>
+              <X className="h-4 w-4 mr-1.5" />
+              Discard
             </Button>
           </div>
         </div>
@@ -794,9 +1078,38 @@ export function StandaloneHtmlEditor({
         </TabsList>
 
         <TabsContent value="visual" className="mt-3">
+          {placementMode && (
+            <div className="mb-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3">
+              <Crosshair className="h-5 w-5 text-amber-600 shrink-0 animate-pulse" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900">Select the footer element where you want the unsubscribe link</p>
+                <p className="text-xs text-amber-700 mt-0.5">Click any text element in the email below, then press the button to insert the link.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
+                onClick={() => { setPlacementMode(false); toast.info('Placement cancelled.'); }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
           <VisualEmailEditor
             html={activeTab === 'visual' && draftDirty.current ? draftHtml : html}
             onUpdate={(updatedHtml) => {
+              if (placementMode) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(updatedHtml, 'text/html');
+                if (!hasUnsubscribeTag(updatedHtml)) {
+                  pushUndo(html);
+                  onChange(updatedHtml);
+                  lastParentHtml.current = updatedHtml;
+                  setDraftHtml(updatedHtml);
+                  draftDirty.current = false;
+                }
+                return;
+              }
               pushUndo(html);
               onChange(updatedHtml);
               lastParentHtml.current = updatedHtml;
@@ -804,6 +1117,37 @@ export function StandaloneHtmlEditor({
               draftDirty.current = false;
             }}
             expanded={expanded}
+            placementMode={placementMode}
+            onPlacementSelect={placementMode ? (selectedElPath: string) => {
+              const currentHtml = draftDirty.current ? draftHtml : html;
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(currentHtml, 'text/html');
+
+              let target: Element | null = null;
+              try {
+                const pathParts = selectedElPath.split('>').map(s => parseInt(s, 10));
+                target = doc.body;
+                for (const idx of pathParts) {
+                  if (target && target.children[idx]) {
+                    target = target.children[idx];
+                  }
+                }
+              } catch { /* fall through */ }
+
+              if (!target || target === doc.body) {
+                toast.error('Could not locate the selected element. Please try selecting a different one.');
+                return;
+              }
+
+              const wrapper = doc.createElement('div');
+              wrapper.innerHTML = UNSUB_SENTENCE_HTML;
+              const unsubEl = wrapper.firstElementChild!;
+              target.appendChild(unsubEl);
+
+              const serialized = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+              applyDeterministicResult(serialized, currentHtml);
+              setPlacementMode(false);
+            } : undefined}
           />
         </TabsContent>
 

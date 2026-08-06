@@ -27,6 +27,8 @@ interface VisualEmailEditorProps {
   html: string;
   onUpdate: (html: string) => void;
   expanded?: boolean;
+  placementMode?: boolean;
+  onPlacementSelect?: (path: string) => void;
 }
 
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
@@ -259,7 +261,7 @@ function injectEditorScript(html: string): string {
 
 // ---- Component ----
 
-export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEditorProps) {
+export function VisualEmailEditor({ html, onUpdate, expanded, placementMode, onPlacementSelect }: VisualEmailEditorProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selection, setSelection] = useState<SelectedElement | null>(null);
@@ -874,6 +876,20 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
       {/* Property panel */}
       {selection && (
         <div className="w-[280px] flex-shrink-0 border rounded-lg bg-slate-50 flex min-h-0 flex-col">
+          {/* Placement mode: Insert button */}
+          {placementMode && onPlacementSelect && (
+            <div className="shrink-0 p-3 border-b bg-amber-50">
+              <Button
+                size="sm"
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                onClick={() => onPlacementSelect(selection.path.join('>'))}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Insert Unsubscribe Link Here
+              </Button>
+              <p className="text-[10px] text-amber-700 mt-1.5 text-center">Will append inside the selected &lt;{selection.tagName}&gt;</p>
+            </div>
+          )}
           {/* Fixed header */}
           <div className="shrink-0 p-3 border-b bg-white rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
