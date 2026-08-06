@@ -915,8 +915,3 @@ function rgbToHex(color: string): string {
   const b = parseInt(match[3]).toString(16).padStart(2, '0');
   return `#${r}${g}${b}`;
 }
-
-
-
-
-export { VisualEmailEditor }
