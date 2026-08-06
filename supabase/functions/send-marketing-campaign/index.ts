@@ -94,26 +94,29 @@ function buildStandardEmailHtml(
 </html>`;
 }
 
+function normalizeUnsubscribeHtml(html: string): string {
+  return html
+    .replace(/%7B%7Bunsubscribe_url%7D%7D/gi, '{{unsubscribe_url}}')
+    .replace(/&#123;&#123;unsubscribe_url&#125;&#125;/gi, '{{unsubscribe_url}}');
+}
+
 function buildStandaloneEmailHtml(
   trackedBody: string,
   trackingPixelUrl: string,
   unsubscribeUrl: string
 ): string {
-  let html = trackedBody;
+  let html = normalizeUnsubscribeHtml(trackedBody);
 
-  const hasUnsubscribe = /unsubscribe/i.test(html);
-  if (!hasUnsubscribe) {
+  const hasPlaceholder = /\{\{unsubscribe_url\}\}/i.test(html);
+  if (hasPlaceholder) {
+    html = html.replace(/\{\{unsubscribe_url\}\}/gi, unsubscribeUrl);
+  } else {
     const unsubBlock = `<div style="text-align:center;padding:10px;font-size:11px;color:#999999;"><a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;">Unsubscribe</a></div>`;
     if (/<\/body>/i.test(html)) {
       html = html.replace(/<\/body>/i, `${unsubBlock}</body>`);
     } else {
       html += unsubBlock;
     }
-  } else {
-    html = html.replace(
-      /\{\{unsubscribe_url\}\}/gi,
-      unsubscribeUrl
-    );
   }
 
   const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;width:1px;height:1px;border:0;" />`;

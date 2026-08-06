@@ -18,6 +18,7 @@ import { RichTextEditor } from '@/components/rich-text-editor';
 import { EmailPreview } from '@/components/email-preview';
 import { AudienceDialog } from '@/components/audience-dialog';
 import { ImportHtmlTemplateDialog } from '@/components/import-html-template-dialog';
+import { normalizeUnsubscribeHtml } from '@/lib/unsubscribe';
 import { StandaloneHtmlEditor } from '@/components/standalone-html-editor';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -186,7 +187,7 @@ export default function MarketingPage() {
         .insert({
           name: templateName,
           subject: templateSubject,
-          body: templateBody,
+          body: normalizeUnsubscribeHtml(templateBody),
           category: templateCategory,
           template_mode: templateMode,
           created_by: user.id,
@@ -588,7 +589,7 @@ export default function MarketingPage() {
         .update({
           name: templateName,
           subject: templateSubject,
-          body: templateBody,
+          body: normalizeUnsubscribeHtml(templateBody),
           category: templateCategory,
           template_mode: templateMode,
         })
@@ -618,7 +619,7 @@ export default function MarketingPage() {
         .update({
           name: templateName || 'Untitled Draft',
           subject: templateSubject || '',
-          body: templateBody || '',
+          body: normalizeUnsubscribeHtml(templateBody || ''),
           category: templateCategory,
           template_mode: templateMode,
         })
@@ -1092,7 +1093,7 @@ export default function MarketingPage() {
                 .insert({
                   name: templateName || 'Untitled Draft',
                   subject: templateSubject || '',
-                  body: templateBody || '',
+                  body: normalizeUnsubscribeHtml(templateBody || ''),
                   category: templateCategory,
                   template_mode: templateMode,
                   created_by: user.id,

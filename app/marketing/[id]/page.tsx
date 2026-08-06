@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound, MessageSquare, FileCode2 } from 'lucide-react';
+import { ArrowLeft, Send, User, Mail, CircleCheck as CheckCircle, Eye, CreditCard as Edit2, Code, Image, Upload, Loader as Loader2, FileSpreadsheet, Building2, Trash2, X, Sparkles, MousePointer, TriangleAlert as AlertTriangle, Ban, Flag, TrendingUp, Users, ChartBar as BarChart3, Link2, ExternalLink, UsersRound, MessageSquare, FileCode2, RefreshCw } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -16,6 +16,7 @@ import { StandaloneHtmlEditor } from '@/components/standalone-html-editor';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { normalizeUnsubscribeHtml, hasUnsubscribeInHref, hasUnsubscribePlaceholder } from '@/lib/unsubscribe';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
@@ -757,10 +758,10 @@ export default function CampaignDetailPage() {
     }
 
     if (campaign?.email_templates?.template_mode === 'standalone_html') {
-      const body = campaign?.email_templates?.body_html || '';
-      if (!/\{\{unsubscribe_url\}\}/i.test(body)) {
+      const body = normalizeUnsubscribeHtml(campaign?.email_templates?.body || '');
+      if (!hasUnsubscribeInHref(body)) {
         toast.error(
-          'Your email is missing the {{unsubscribe_url}} placeholder. Open the editor and use the "Add Unsubscribe" button to insert a working unsubscribe link before sending.',
+          'Your email is missing the {{unsubscribe_url}} placeholder in a link. Open the editor and use the "Add Unsubscribe" button to insert a working unsubscribe link before sending.',
           { duration: 8000 }
         );
         return;
@@ -950,7 +951,7 @@ export default function CampaignDetailPage() {
         .from('email_templates')
         .update({
           subject: editingSubject,
-          body: editingBody,
+          body: normalizeUnsubscribeHtml(editingBody),
         })
         .eq('id', campaign.email_templates.id);
 
@@ -975,7 +976,7 @@ export default function CampaignDetailPage() {
         .from('email_templates')
         .update({
           subject: editingSubject,
-          body: editingBody,
+          body: normalizeUnsubscribeHtml(editingBody),
         })
         .eq('id', campaign.email_templates.id);
       toast.success('Template changes saved');

@@ -10,6 +10,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Code, Eye, Link2 as LinkIcon, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck, Crosshair } from 'lucide-react';
 import { toast } from 'sonner';
 import { VisualEmailEditor } from '@/components/visual-email-editor';
+import {
+  normalizeUnsubscribeHtml,
+  hasUnsubscribePlaceholder,
+  hasUnsubscribeInHref,
+  replaceForPreview,
+  PREVIEW_UNSUBSCRIBE_URL,
+  UNSUB_TAG,
+} from '@/lib/unsubscribe';
 
 // --- Link Parsing ---
 
@@ -122,7 +130,7 @@ const DANGEROUS_TAGS = [
 const EVENT_HANDLER_RE = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 
 function sanitizeStandaloneHtml(html: string): { sanitized: string; removedCount: number } {
-  let result = html;
+  let result = normalizeUnsubscribeHtml(html);
   let removedCount = 0;
 
   DANGEROUS_TAGS.forEach(tag => {
@@ -396,16 +404,11 @@ export function StandaloneHtmlEditor({
     setEditingLinkHref('');
   };
 
-  // --- Unsubscribe detection ---
+  // --- Unsubscribe detection (shared utility) ---
 
-  const PREVIEW_UNSUBSCRIBE_URL = '#unsubscribe-preview';
-  const UNSUB_TAG = '{{unsubscribe_url}}';
-  const UNSUB_TAG_RE = /\{\{unsubscribe_url\}\}/i;
-  const UNSUB_TAG_RE_G = /\{\{unsubscribe_url\}\}/gi;
-
-  const hasUnsubscribeTag = useCallback((source: string) => UNSUB_TAG_RE.test(source), []);
+  const hasUnsubscribeTag = useCallback((source: string) => hasUnsubscribePlaceholder(source), []);
   const replaceUnsubscribeForPreview = useCallback(
-    (source: string) => source.replace(UNSUB_TAG_RE_G, PREVIEW_UNSUBSCRIBE_URL),
+    (source: string) => replaceForPreview(source),
     [],
   );
 
@@ -568,7 +571,7 @@ export function StandaloneHtmlEditor({
       }
 
       let newFooterHtml = result.body || '';
-      if (!UNSUB_TAG_RE.test(newFooterHtml)) {
+      if (!hasUnsubscribePlaceholder(newFooterHtml)) {
         toast.error('AI removed the unsubscribe placeholder — change rejected to protect your compliance.');
         return;
       }
