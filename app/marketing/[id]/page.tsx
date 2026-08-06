@@ -756,6 +756,17 @@ export default function CampaignDetailPage() {
       return;
     }
 
+    if (campaign?.email_templates?.template_mode === 'standalone_html') {
+      const body = campaign?.email_templates?.body_html || '';
+      if (!/\{\{unsubscribe_url\}\}/i.test(body)) {
+        toast.error(
+          'Your email is missing the {{unsubscribe_url}} placeholder. Open the editor and use the "Add Unsubscribe" button to insert a working unsubscribe link before sending.',
+          { duration: 8000 }
+        );
+        return;
+      }
+    }
+
     const unsent = recipients.filter(r => !r.sent).length;
     setSending(true);
     setSendProgress({

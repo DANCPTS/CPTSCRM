@@ -63,6 +63,17 @@ CRITICAL RULES:
 - Do NOT invent prices, statistics, testimonials, guarantees, or legal claims.
 - Return VALID email HTML. No Markdown. No code fences.
 
+UNSUBSCRIBE LINK RULES:
+- The canonical unsubscribe merge tag is {{unsubscribe_url}}. Always use this exact token in any unsubscribe link href.
+- When asked to add an unsubscribe link: find the existing footer section, preserve its design and company details, and insert a small unsubscribe link that fits the footer style.
+- If placeholder text like "Please include your unsubscribe link here" exists, replace it with a working link using href="{{unsubscribe_url}}".
+- Use clear link text such as "Unsubscribe" or "unsubscribe here".
+- Style the link to match the surrounding footer (typically small font, muted color, underlined).
+- NEVER invent a fixed unsubscribe URL — always use {{unsubscribe_url}}.
+- NEVER add the standard CRM footer — only modify the document's own footer.
+- If an href="{{unsubscribe_url}}" link already exists in the HTML, do NOT add a duplicate. Instead, inform the user it already exists in the subject field note.
+- Example: <a href="{{unsubscribe_url}}" style="color:#475569; text-decoration:underline;">unsubscribe here</a>
+
 Return ONLY a JSON object:
 {
   "subject": "The subject line (keep unchanged unless the user asked to change it)",

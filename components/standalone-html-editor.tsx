@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick } from 'lucide-react';
+import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick, ShieldCheck, Link as Link2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { VisualEmailEditor } from '@/components/visual-email-editor';
 
@@ -472,6 +472,21 @@ export function StandaloneHtmlEditor({
     toast.info('AI changes discarded');
   };
 
+  const PREVIEW_UNSUBSCRIBE_URL = '#unsubscribe-preview';
+
+  const hasUnsubscribeTag = useCallback((source: string) => {
+    return /\{\{unsubscribe_url\}\}/i.test(source);
+  }, []);
+
+  const replaceUnsubscribeForPreview = useCallback((source: string) => {
+    return source.replace(/\{\{unsubscribe_url\}\}/gi, PREVIEW_UNSUBSCRIBE_URL);
+  }, []);
+
+  const currentHtmlHasUnsubscribe = useMemo(() => {
+    const source = draftDirty.current ? draftHtml : html;
+    return hasUnsubscribeTag(source);
+  }, [html, draftHtml, hasUnsubscribeTag]);
+
   // Build the preview HTML — sanitize a copy, never the live draft
   const previewHtml = useMemo(() => {
     const source = pendingAiResult ? pendingAiResult.body : (activeTab === 'preview' && draftDirty.current ? draftHtml : html);
@@ -481,8 +496,8 @@ export function StandaloneHtmlEditor({
     } else {
       setSanitizeWarning(null);
     }
-    return sanitized;
-  }, [pendingAiResult, html, draftHtml, activeTab]);
+    return replaceUnsubscribeForPreview(sanitized);
+  }, [pendingAiResult, html, draftHtml, activeTab, replaceUnsubscribeForPreview]);
 
   // --- Expose a save-preparation hook for the parent ---
   // The parent calls onChange; we make sure the latest draft is committed.
@@ -608,10 +623,24 @@ export function StandaloneHtmlEditor({
     <div className="space-y-4">
       {/* AI Refinement */}
       <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
-        <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
-          <Sparkles className="h-4 w-4" />
-          Edit with AI
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-blue-900 flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            Edit with AI
+          </label>
+          {/* Unsubscribe link status indicator */}
+          {currentHtmlHasUnsubscribe ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+              <ShieldCheck className="h-3 w-3" />
+              Unsubscribe link found
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">
+              <AlertTriangle className="h-3 w-3" />
+              No unsubscribe link
+            </span>
+          )}
+        </div>
         <p className="text-xs text-blue-700 mb-3">
           Ask the AI to change text, update links, replace images, or modify any part of the imported email.
         </p>
@@ -625,6 +654,24 @@ export function StandaloneHtmlEditor({
             className="flex-1 px-3 py-2 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
             disabled={aiRefining}
           />
+          <Button
+            type="button"
+            onClick={() => {
+              if (currentHtmlHasUnsubscribe) {
+                setActiveTab('links');
+                toast.info('Your email already has an unsubscribe link — highlighted in the Links tab.');
+                return;
+              }
+              setAiPrompt('Add an unsubscribe link to the existing footer. Use href="{{unsubscribe_url}}" and text "unsubscribe here". Preserve all existing footer content and styling.');
+              toast.info('Unsubscribe instruction ready — click Apply to let AI add it.');
+            }}
+            disabled={aiRefining}
+            variant="outline"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5 shrink-0"
+          >
+            <Link2Icon className="h-3.5 w-3.5" />
+            {currentHtmlHasUnsubscribe ? 'View Link' : 'Add Unsubscribe'}
+          </Button>
           <Button
             type="button"
             onClick={handleAiRefine}
@@ -856,6 +903,12 @@ export function StandaloneHtmlEditor({
         </TabsContent>
 
         <TabsContent value="preview" className="mt-3">
+          {currentHtmlHasUnsubscribe && (
+            <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span>The unsubscribe link below uses a preview placeholder. When sent, each recipient will get a unique, working unsubscribe URL.</span>
+            </div>
+          )}
           <div
             className="border rounded-lg overflow-hidden bg-white"
             style={{ height: expanded ? '70vh' : '55vh', minHeight: 360, overscrollBehavior: 'contain' }}
