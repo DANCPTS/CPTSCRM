@@ -420,6 +420,15 @@ export default function CampaignDetailPage() {
     status: 'idle',
   });
   const editTemplateActionRef = useRef(false);
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [suppressionSummary, setSuppressionSummary] = useState<{
+    total: number;
+    globalUnsubscribes: number;
+    invalidEmails: number;
+    duplicates: number;
+    eligible: number;
+    loading: boolean;
+  } | null>(null);
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -751,7 +760,7 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleSendCampaign = async () => {
+  const prepareSendConfirmation = async () => {
     if (recipients.length === 0) {
       toast.error('Please add recipients before sending');
       return;
@@ -767,6 +776,59 @@ export default function CampaignDetailPage() {
         return;
       }
     }
+
+    setSuppressionSummary({ total: 0, globalUnsubscribes: 0, invalidEmails: 0, duplicates: 0, eligible: 0, loading: true });
+    setSendConfirmOpen(true);
+
+    try {
+      const unsent = recipients.filter(r => !r.sent);
+      const totalCount = unsent.length;
+
+      const allUnsubscribed: string[] = [];
+      let page = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const { data } = await supabase
+          .from('unsubscribed_emails')
+          .select('email')
+          .range(page * 1000, (page + 1) * 1000 - 1);
+        if (data) allUnsubscribed.push(...data.map((u: any) => u.email.toLowerCase().trim()));
+        hasMore = (data?.length || 0) === 1000;
+        page++;
+      }
+      const unsubSet = new Set(allUnsubscribed);
+
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const seenEmails = new Set<string>();
+      let globalUnsubs = 0;
+      let invalid = 0;
+      let duplicates = 0;
+      let eligible = 0;
+
+      for (const r of unsent) {
+        const email = (r.email || '').toLowerCase().trim();
+        if (!email || !emailRe.test(email)) {
+          invalid++;
+        } else if (unsubSet.has(email)) {
+          globalUnsubs++;
+        } else if (seenEmails.has(email)) {
+          duplicates++;
+        } else {
+          seenEmails.add(email);
+          eligible++;
+        }
+      }
+
+      setSuppressionSummary({ total: totalCount, globalUnsubscribes: globalUnsubs, invalidEmails: invalid, duplicates, eligible, loading: false });
+    } catch (error: any) {
+      toast.error('Could not load suppression data: ' + error.message);
+      setSuppressionSummary(null);
+      setSendConfirmOpen(false);
+    }
+  };
+
+  const handleSendCampaign = async () => {
+    setSendConfirmOpen(false);
 
     const unsent = recipients.filter(r => !r.sent).length;
     setSending(true);
@@ -1219,7 +1281,7 @@ export default function CampaignDetailPage() {
               </div>
             </div>
             {campaign.status === 'draft' && recipients.length > 0 && (
-              <Button onClick={handleSendCampaign} disabled={sending}>
+              <Button onClick={prepareSendConfirmation} disabled={sending}>
                 <Send className="mr-2 h-4 w-4" />
                 {sending ? 'Sending...' : 'Send Campaign'}
               </Button>
@@ -1653,6 +1715,81 @@ export default function CampaignDetailPage() {
               {savingTemplate ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Send Confirmation Dialog with Suppression Summary */}
+      <Dialog open={sendConfirmOpen} onOpenChange={(open) => {
+        if (!open) {
+          setSendConfirmOpen(false);
+          setSuppressionSummary(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Campaign Send</DialogTitle>
+          </DialogHeader>
+          {suppressionSummary?.loading ? (
+            <div className="flex items-center justify-center gap-3 py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              <p className="text-sm text-slate-600">Checking global unsubscribes and validating recipients...</p>
+            </div>
+          ) : suppressionSummary ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center py-1.5 px-3 bg-slate-50 rounded text-sm">
+                  <span className="text-slate-600">Total recipients</span>
+                  <span className="font-semibold">{suppressionSummary.total}</span>
+                </div>
+                {suppressionSummary.globalUnsubscribes > 0 && (
+                  <div className="flex justify-between items-center py-1.5 px-3 bg-red-50 rounded text-sm">
+                    <span className="text-red-700">Global unsubscribes excluded</span>
+                    <span className="font-semibold text-red-700">-{suppressionSummary.globalUnsubscribes}</span>
+                  </div>
+                )}
+                {suppressionSummary.invalidEmails > 0 && (
+                  <div className="flex justify-between items-center py-1.5 px-3 bg-amber-50 rounded text-sm">
+                    <span className="text-amber-700">Invalid addresses excluded</span>
+                    <span className="font-semibold text-amber-700">-{suppressionSummary.invalidEmails}</span>
+                  </div>
+                )}
+                {suppressionSummary.duplicates > 0 && (
+                  <div className="flex justify-between items-center py-1.5 px-3 bg-slate-50 rounded text-sm">
+                    <span className="text-slate-600">Duplicates excluded</span>
+                    <span className="font-semibold text-slate-600">-{suppressionSummary.duplicates}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center py-2 px-3 bg-green-50 rounded text-sm border border-green-200">
+                  <span className="text-green-800 font-medium">Eligible recipients</span>
+                  <span className="font-bold text-green-800 text-lg">{suppressionSummary.eligible}</span>
+                </div>
+              </div>
+
+              {suppressionSummary.eligible === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800 font-medium">No eligible recipients</p>
+                  <p className="text-xs text-amber-700 mt-1">All recipients are either unsubscribed, invalid, or duplicates. Add more recipients or check your audience.</p>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-600">
+                  This will send <strong>{suppressionSummary.eligible}</strong> {suppressionSummary.eligible === 1 ? 'email' : 'emails'} using your configured email provider. Globally unsubscribed contacts will be automatically skipped.
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t">
+                <Button variant="outline" onClick={() => { setSendConfirmOpen(false); setSuppressionSummary(null); }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendCampaign}
+                  disabled={suppressionSummary.eligible === 0}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Send to {suppressionSummary.eligible} {suppressionSummary.eligible === 1 ? 'recipient' : 'recipients'}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </AppShell>
