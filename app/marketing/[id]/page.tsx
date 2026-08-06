@@ -1508,13 +1508,14 @@ export default function CampaignDetailPage() {
             <DialogTitle>Edit Email Template</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto space-y-4">
+            {campaign?.email_templates?.template_mode !== 'standalone_html' && (
             <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
               <label className="text-sm font-medium text-blue-900 mb-2 flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
                 Modify with AI
               </label>
               <p className="text-xs text-blue-700 mb-3">
-                Describe how you want to change the email (e.g., "make it more formal", "add a discount offer", "shorten the text")
+                Describe how you want to change the email (e.g., &quot;make it more formal&quot;, &quot;add a discount offer&quot;, &quot;shorten the text&quot;)
               </p>
               <div className="flex gap-2">
                 <input
@@ -1545,6 +1546,7 @@ export default function CampaignDetailPage() {
                 </Button>
               </div>
             </div>
+            )}
 
             <div>
               <label className="text-sm font-medium text-slate-700 mb-1 block">Subject</label>

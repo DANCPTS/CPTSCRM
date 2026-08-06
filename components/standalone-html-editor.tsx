@@ -4,12 +4,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon } from 'lucide-react';
+import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // --- Link Parsing ---
@@ -93,28 +91,21 @@ function updateLinkInHtml(html: string, link: ParsedLink, newHref: string): stri
   const anchorRegex = /<a\s[^>]*>([\s\S]*?)<\/a>/gi;
   let match: RegExpExecArray | null;
   let currentIndex = 0;
-  let targetIndex = -1;
+  const targetLinkIndex = parseInt(link.id.replace('link-', ''), 10);
 
   while ((match = anchorRegex.exec(html)) !== null) {
-    if (currentIndex === links_indexOf(link)) {
-      targetIndex = match.index;
-      break;
+    if (currentIndex === targetLinkIndex) {
+      const fullMatch = match[0];
+      const updated = fullMatch.replace(
+        /href\s*=\s*["'][^"']*["']/i,
+        `href="${escapeHtmlAttr(newHref)}"`
+      );
+      return html.substring(0, match.index) + updated + html.substring(match.index + fullMatch.length);
     }
     currentIndex++;
   }
 
-  if (targetIndex === -1) return html;
-
-  const fullMatch = match![0];
-  const updated = fullMatch.replace(
-    /href\s*=\s*["'][^"']*["']/i,
-    `href="${escapeHtmlAttr(newHref)}"`
-  );
-  return html.substring(0, targetIndex) + updated + html.substring(targetIndex + fullMatch.length);
-}
-
-function links_indexOf(link: ParsedLink): number {
-  return parseInt(link.id.replace('link-', ''), 10);
+  return html;
 }
 
 function escapeHtmlAttr(s: string): string {
@@ -129,20 +120,59 @@ const DANGEROUS_TAGS = [
 ];
 const EVENT_HANDLER_RE = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
 
-function sanitizeStandaloneHtml(html: string): string {
+function sanitizeStandaloneHtml(html: string): { sanitized: string; removedCount: number } {
   let result = html;
+  let removedCount = 0;
 
   DANGEROUS_TAGS.forEach(tag => {
-    result = result.replace(new RegExp(`<${tag}[\\s\\S]*?<\\/${tag}>`, 'gi'), '');
-    result = result.replace(new RegExp(`<${tag}[^>]*\\/?>`, 'gi'), '');
-    result = result.replace(new RegExp(`<\\/${tag}>`, 'gi'), '');
+    const openClose = new RegExp(`<${tag}[\\s\\S]*?<\\/${tag}>`, 'gi');
+    const selfClose = new RegExp(`<${tag}[^>]*\\/?>`, 'gi');
+    const closeOnly = new RegExp(`<\\/${tag}>`, 'gi');
+    const m1 = result.match(openClose);
+    const m2 = result.match(selfClose);
+    if (m1) removedCount += m1.length;
+    if (m2) removedCount += m2.length;
+    result = result.replace(openClose, '');
+    result = result.replace(selfClose, '');
+    result = result.replace(closeOnly, '');
   });
 
+  const eventMatches = result.match(EVENT_HANDLER_RE);
+  if (eventMatches) removedCount += eventMatches.length;
   result = result.replace(EVENT_HANDLER_RE, '');
+
+  const jsHrefs = result.match(/href\s*=\s*["']javascript:[^"']*["']/gi);
+  if (jsHrefs) removedCount += jsHrefs.length;
   result = result.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"');
   result = result.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""');
 
-  return result;
+  return { sanitized: result, removedCount };
+}
+
+// --- Simple HTML formatter ---
+
+function formatHtml(html: string): string {
+  let formatted = '';
+  let indent = 0;
+  const lines = html
+    .replace(/>\s*</g, '>\n<')
+    .split('\n');
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (/^<\//.test(line)) indent = Math.max(0, indent - 1);
+
+    formatted += '  '.repeat(indent) + line + '\n';
+
+    if (/^<[a-z][^>]*[^/]>$/i.test(line) &&
+        !/^<(?:br|hr|img|input|meta|link|col|area|base|command|embed|keygen|param|source|track|wbr)/i.test(line)) {
+      indent++;
+    }
+  }
+
+  return formatted.trimEnd();
 }
 
 // --- Link Type Icons & Labels ---
@@ -186,11 +216,19 @@ export function StandaloneHtmlEditor({
   onSubjectChange,
   originalHtml,
 }: StandaloneHtmlEditorProps) {
+  // draftHtml holds the live, unsanitized working copy the user types into.
+  // We sync it FROM the parent html prop only when the parent drives a change
+  // (AI accept, link save, undo, reset). During typing, draftHtml is authoritative.
+  const [draftHtml, setDraftHtml] = useState(html);
   const [activeTab, setActiveTab] = useState('html');
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   const [editingLinkHref, setEditingLinkHref] = useState('');
   const [editingLinkType, setEditingLinkType] = useState<string>('webpage');
+  const [expanded, setExpanded] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [sanitizeWarning, setSanitizeWarning] = useState<string | null>(null);
 
   // AI state
   const [aiPrompt, setAiPrompt] = useState('');
@@ -202,7 +240,12 @@ export function StandaloneHtmlEditor({
   } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
   const initialHtmlRef = useRef(originalHtml || html);
+  const lastParentHtml = useRef(html);
+
+  // Track whether draftHtml has diverged from the parent
+  const draftDirty = useRef(false);
 
   useEffect(() => {
     if (originalHtml) {
@@ -210,8 +253,34 @@ export function StandaloneHtmlEditor({
     }
   }, [originalHtml]);
 
-  const parsedLinks = useMemo(() => parseLinks(html), [html]);
+  // Sync draftHtml when the parent drives a change (AI, link save, undo, reset)
+  useEffect(() => {
+    if (html !== lastParentHtml.current) {
+      lastParentHtml.current = html;
+      setDraftHtml(html);
+      draftDirty.current = false;
+    }
+  }, [html]);
 
+  // Commit draftHtml to parent when leaving the HTML tab
+  const commitDraft = useCallback(() => {
+    if (draftDirty.current && draftHtml !== html) {
+      setUndoStack(prev => [...prev.slice(-19), html]);
+      onChange(draftHtml);
+      lastParentHtml.current = draftHtml;
+      draftDirty.current = false;
+    }
+  }, [draftHtml, html, onChange]);
+
+  const handleTabChange = useCallback((newTab: string) => {
+    if (activeTab === 'html' && newTab !== 'html') {
+      commitDraft();
+    }
+    setActiveTab(newTab);
+  }, [activeTab, commitDraft]);
+
+  // Parse links from the current working html (committed version)
+  const parsedLinks = useMemo(() => parseLinks(html), [html]);
   const missingDestLinks = parsedLinks.filter(l => l.type === 'empty');
   const buttonLinks = parsedLinks.filter(l => l.isButton);
   const regularLinks = parsedLinks.filter(l => !l.isButton);
@@ -220,34 +289,73 @@ export function StandaloneHtmlEditor({
     setUndoStack(prev => [...prev.slice(-19), currentHtml]);
   }, []);
 
-  const handleHtmlChange = useCallback((newHtml: string) => {
-    onChange(newHtml);
-  }, [onChange]);
-
   const handleUndo = useCallback(() => {
     if (undoStack.length === 0) return;
     const previous = undoStack[undoStack.length - 1];
     setUndoStack(prev => prev.slice(0, -1));
     onChange(previous);
+    lastParentHtml.current = previous;
+    setDraftHtml(previous);
+    draftDirty.current = false;
     toast.success('Reverted to previous version');
   }, [undoStack, onChange]);
 
   const handleReset = useCallback(() => {
-    if (initialHtmlRef.current === html) {
+    if (initialHtmlRef.current === html && initialHtmlRef.current === draftHtml) {
       toast.info('Already at the original imported version');
       return;
     }
     pushUndo(html);
     onChange(initialHtmlRef.current);
+    lastParentHtml.current = initialHtmlRef.current;
+    setDraftHtml(initialHtmlRef.current);
+    draftDirty.current = false;
     toast.success('Reset to original imported version');
-  }, [html, onChange, pushUndo]);
+  }, [html, draftHtml, onChange, pushUndo]);
 
-  const handleTextareaBlur = useCallback(() => {
-    const sanitized = sanitizeStandaloneHtml(html);
-    if (sanitized !== html) {
-      onChange(sanitized);
+  // --- Toolbar actions ---
+
+  const handleFind = useCallback(() => {
+    setFindOpen(prev => !prev);
+    setTimeout(() => findInputRef.current?.focus(), 50);
+  }, []);
+
+  const handleFindNext = useCallback(() => {
+    if (!findQuery || !textareaRef.current) return;
+    const ta = textareaRef.current;
+    const text = ta.value;
+    const startPos = ta.selectionEnd || 0;
+    const idx = text.toLowerCase().indexOf(findQuery.toLowerCase(), startPos);
+    if (idx !== -1) {
+      ta.focus();
+      ta.setSelectionRange(idx, idx + findQuery.length);
+    } else {
+      const wrapIdx = text.toLowerCase().indexOf(findQuery.toLowerCase(), 0);
+      if (wrapIdx !== -1) {
+        ta.focus();
+        ta.setSelectionRange(wrapIdx, wrapIdx + findQuery.length);
+      } else {
+        toast.info('Not found');
+      }
     }
-  }, [html, onChange]);
+  }, [findQuery]);
+
+  const handleFormat = useCallback(() => {
+    pushUndo(draftHtml);
+    const formatted = formatHtml(draftHtml);
+    setDraftHtml(formatted);
+    draftDirty.current = true;
+    toast.success('HTML formatted');
+  }, [draftHtml, pushUndo]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(draftHtml);
+      toast.success('HTML copied to clipboard');
+    } catch {
+      toast.error('Could not copy to clipboard');
+    }
+  }, [draftHtml]);
 
   // --- Link editing ---
 
@@ -268,7 +376,6 @@ export function StandaloneHtmlEditor({
     if (editingLinkType === 'telephone' && finalHref && !finalHref.startsWith('tel:')) {
       finalHref = `tel:${finalHref}`;
     }
-
     if (finalHref && editingLinkType === 'webpage' && !/^https?:\/\//i.test(finalHref) && !finalHref.startsWith('{{')) {
       finalHref = `https://${finalHref}`;
     }
@@ -276,6 +383,9 @@ export function StandaloneHtmlEditor({
     pushUndo(html);
     const updated = updateLinkInHtml(html, link, finalHref);
     onChange(updated);
+    lastParentHtml.current = updated;
+    setDraftHtml(updated);
+    draftDirty.current = false;
     setEditingLinkId(null);
     toast.success('Link updated');
   };
@@ -293,6 +403,16 @@ export function StandaloneHtmlEditor({
       return;
     }
 
+    // Commit any draft edits first
+    if (draftDirty.current && draftHtml !== html) {
+      pushUndo(html);
+      onChange(draftHtml);
+      lastParentHtml.current = draftHtml;
+      draftDirty.current = false;
+    }
+
+    const currentHtml = draftDirty.current ? draftHtml : html;
+
     setAiRefining(true);
     try {
       const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/generate-marketing-email`;
@@ -305,7 +425,7 @@ export function StandaloneHtmlEditor({
         body: JSON.stringify({
           prompt: aiPrompt,
           existingSubject: subject,
-          existingBody: html,
+          existingBody: currentHtml,
           templateMode: 'standalone_html',
         }),
       });
@@ -313,10 +433,9 @@ export function StandaloneHtmlEditor({
       const result = await response.json();
 
       if (response.ok && result.success) {
-        const sanitized = sanitizeStandaloneHtml(result.body);
         setPendingAiResult({
           subject: result.subject,
-          body: sanitized,
+          body: result.body,
           summary: aiPrompt,
         });
         setActiveTab('preview');
@@ -334,7 +453,11 @@ export function StandaloneHtmlEditor({
   const acceptAiChanges = () => {
     if (!pendingAiResult) return;
     pushUndo(html);
-    onChange(pendingAiResult.body);
+    const { sanitized } = sanitizeStandaloneHtml(pendingAiResult.body);
+    onChange(sanitized);
+    lastParentHtml.current = sanitized;
+    setDraftHtml(sanitized);
+    draftDirty.current = false;
     if (onSubjectChange && pendingAiResult.subject) {
       onSubjectChange(pendingAiResult.subject);
     }
@@ -348,7 +471,21 @@ export function StandaloneHtmlEditor({
     toast.info('AI changes discarded');
   };
 
-  const previewHtml = pendingAiResult ? pendingAiResult.body : html;
+  // Build the preview HTML — sanitize a copy, never the live draft
+  const previewHtml = useMemo(() => {
+    const source = pendingAiResult ? pendingAiResult.body : (activeTab === 'preview' && draftDirty.current ? draftHtml : html);
+    const { sanitized, removedCount } = sanitizeStandaloneHtml(source);
+    if (removedCount > 0 && !pendingAiResult) {
+      setSanitizeWarning(`${removedCount} unsafe element(s) will be removed when you save.`);
+    } else {
+      setSanitizeWarning(null);
+    }
+    return sanitized;
+  }, [pendingAiResult, html, draftHtml, activeTab]);
+
+  // --- Expose a save-preparation hook for the parent ---
+  // The parent calls onChange; we make sure the latest draft is committed.
+  // This is handled via commitDraft on tab change and via the onBlur below.
 
   const renderLinkRow = (link: ParsedLink) => {
     const isEditing = editingLinkId === link.id;
@@ -464,6 +601,8 @@ export function StandaloneHtmlEditor({
     );
   };
 
+  const editorHeight = expanded ? 'min-h-[700px]' : 'min-h-[450px]';
+
   return (
     <div className="space-y-4">
       {/* AI Refinement */}
@@ -538,6 +677,14 @@ export function StandaloneHtmlEditor({
         </div>
       )}
 
+      {/* Sanitization warning */}
+      {sanitizeWarning && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          <p className="text-xs text-amber-700">{sanitizeWarning}</p>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -563,7 +710,7 @@ export function StandaloneHtmlEditor({
             size="sm"
             variant="outline"
             onClick={handleReset}
-            disabled={html === initialHtmlRef.current}
+            disabled={html === initialHtmlRef.current && draftHtml === initialHtmlRef.current}
             className="h-7 text-xs gap-1"
           >
             <RotateCcw className="h-3 w-3" />
@@ -573,7 +720,7 @@ export function StandaloneHtmlEditor({
       </div>
 
       {/* Editor Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="html" className="gap-1.5">
             <Code className="h-3.5 w-3.5" />
@@ -595,14 +742,97 @@ export function StandaloneHtmlEditor({
         </TabsList>
 
         <TabsContent value="html" className="mt-3">
-          <Textarea
+          {/* Editor toolbar */}
+          <div className="flex items-center gap-1 mb-2 border-b pb-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1 text-slate-600"
+              onClick={handleFind}
+            >
+              <Search className="h-3 w-3" />
+              Find
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1 text-slate-600"
+              onClick={handleFormat}
+            >
+              <AlignLeft className="h-3 w-3" />
+              Format
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1 text-slate-600"
+              onClick={handleCopy}
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </Button>
+            <div className="flex-1" />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs gap-1 text-slate-600"
+              onClick={() => setExpanded(e => !e)}
+            >
+              {expanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              {expanded ? 'Collapse' : 'Expand'}
+            </Button>
+          </div>
+
+          {/* Find bar */}
+          {findOpen && (
+            <div className="flex items-center gap-2 mb-2 p-2 bg-slate-50 rounded-lg border">
+              <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+              <input
+                ref={findInputRef}
+                type="text"
+                value={findQuery}
+                onChange={(e) => setFindQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleFindNext();
+                  if (e.key === 'Escape') { setFindOpen(false); textareaRef.current?.focus(); }
+                }}
+                placeholder="Search in HTML..."
+                className="flex-1 text-sm bg-transparent border-none outline-none"
+              />
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={handleFindNext}>
+                Next
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => setFindOpen(false)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+
+          {/* The actual editable textarea */}
+          <textarea
             ref={textareaRef}
-            value={html}
-            onChange={(e) => handleHtmlChange(e.target.value)}
-            onBlur={handleTextareaBlur}
-            className="font-mono text-xs min-h-[450px] resize-y bg-slate-50 leading-relaxed"
+            value={draftHtml}
+            onChange={(e) => {
+              setDraftHtml(e.target.value);
+              draftDirty.current = true;
+            }}
+            onBlur={() => {
+              // Commit draft to parent on blur so Preview/Links see the latest edits
+              if (draftDirty.current && draftHtml !== html) {
+                setUndoStack(prev => [...prev.slice(-19), html]);
+                onChange(draftHtml);
+                lastParentHtml.current = draftHtml;
+                draftDirty.current = false;
+              }
+            }}
+            className={`w-full ${editorHeight} resize-y rounded-md border border-slate-300 bg-slate-50 px-4 py-3 font-mono text-xs leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
             placeholder="Complete HTML email document..."
             spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            data-gramm="false"
+            wrap="off"
+            style={{ tabSize: 2, overflowX: 'auto', whiteSpace: 'pre' }}
           />
         </TabsContent>
 
@@ -613,7 +843,7 @@ export function StandaloneHtmlEditor({
               title="Email preview"
               sandbox="allow-same-origin"
               className="w-full border-0"
-              style={{ height: '550px', pointerEvents: 'none' }}
+              style={{ height: expanded ? '700px' : '550px', pointerEvents: 'none' }}
             />
           </div>
         </TabsContent>
@@ -628,7 +858,6 @@ export function StandaloneHtmlEditor({
           ) : (
             <ScrollArea className="h-[450px]">
               <div className="space-y-5 pr-3">
-                {/* Missing destination warning */}
                 {missingDestLinks.length > 0 && (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center gap-2 mb-1">
@@ -643,7 +872,6 @@ export function StandaloneHtmlEditor({
                   </div>
                 )}
 
-                {/* Buttons section */}
                 {buttonLinks.length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
@@ -655,7 +883,6 @@ export function StandaloneHtmlEditor({
                   </div>
                 )}
 
-                {/* Regular links section */}
                 {regularLinks.length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
