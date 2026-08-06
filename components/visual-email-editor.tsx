@@ -4,11 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-  Type, Link2, ImageIcon, X, Upload, Loader2, AlertTriangle,
-  Replace,
-} from 'lucide-react';
+import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Type, Link2, Image as ImageIcon, X, Upload, Loader as Loader2, TriangleAlert as AlertTriangle, Replace, CircleCheck as CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -290,6 +286,7 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
   const [replaceLinkHref, setReplaceLinkHref] = useState('');
   const [uploading, setUploading] = useState(false);
   const [showChildWarning, setShowChildWarning] = useState(false);
+  const [uploadComplete, setUploadComplete] = useState(false);
 
   const preparedHtml = injectEditorScript(html);
 
@@ -370,6 +367,7 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
     setReplaceWidth('220');
     setReplaceAlign('center');
     setReplaceLinkHref('');
+    setUploadComplete(false);
     setShowReplacePanel(true);
   };
 
@@ -402,7 +400,8 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
         .getPublicUrl(fileName);
 
       setReplaceImgUrl(publicUrl);
-      toast.success('Image uploaded');
+      setUploadComplete(true);
+      toast.success('Logo uploaded. Click "Replace Selected Text with Logo" to apply it.');
     } catch (err: any) {
       console.error('Upload error:', err);
       toast.error('Upload failed: ' + (err.message || 'Unknown error'));
@@ -565,26 +564,35 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
         />
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-2 pt-1">
-        <Button
-          size="sm"
-          className="flex-1 h-8 text-xs bg-orange-600 hover:bg-orange-700"
-          onClick={executeReplace}
-          disabled={!replaceImgUrl || uploading}
-        >
-          <Replace className="h-3.5 w-3.5 mr-1" />
-          Replace
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 text-xs"
-          onClick={cancelReplace}
-        >
-          Cancel
-        </Button>
-      </div>
+      {/* Upload success guidance */}
+      {uploadComplete && replaceImgUrl && !uploading && (
+        <div className="flex items-start gap-2 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-800">
+          <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+          <span>Logo uploaded. Click <strong>&quot;Replace Selected Text with Logo&quot;</strong> below to apply it.</span>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderReplaceFooter = () => (
+    <div className="shrink-0 border-t bg-white p-3 rounded-b-lg space-y-2">
+      <Button
+        size="sm"
+        className="w-full h-9 text-xs bg-orange-600 hover:bg-orange-700 gap-1.5 font-medium"
+        onClick={executeReplace}
+        disabled={!replaceImgUrl || uploading}
+      >
+        <Replace className="h-3.5 w-3.5" />
+        Replace Selected Text with Logo
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full h-8 text-xs"
+        onClick={cancelReplace}
+      >
+        Cancel
+      </Button>
     </div>
   );
 
@@ -865,8 +873,9 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
 
       {/* Property panel */}
       {selection && (
-        <div className="w-[280px] flex-shrink-0 border rounded-lg bg-slate-50 overflow-auto">
-          <div className="p-3 border-b bg-white rounded-t-lg flex items-center justify-between">
+        <div className="w-[280px] flex-shrink-0 border rounded-lg bg-slate-50 flex min-h-0 flex-col">
+          {/* Fixed header */}
+          <div className="shrink-0 p-3 border-b bg-white rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               {selection.type === 'text' && !showReplacePanel && <Type className="h-4 w-4 text-blue-600" />}
               {selection.type === 'button' && <Link2 className="h-4 w-4 text-green-600" />}
@@ -882,7 +891,8 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
               <X className="h-3.5 w-3.5" />
             </Button>
           </div>
-          <div className="p-3">
+          {/* Scrollable content */}
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {showReplacePanel ? (
               renderReplaceImagePanel()
             ) : (
@@ -893,6 +903,8 @@ export function VisualEmailEditor({ html, onUpdate, expanded }: VisualEmailEdito
               </>
             )}
           </div>
+          {/* Sticky action footer for replace panel */}
+          {showReplacePanel && renderReplaceFooter()}
         </div>
       )}
     </div>
