@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2 } from 'lucide-react';
+import { Code, Eye, Link2, Sparkles, Loader as Loader2, Undo2, RotateCcw, ExternalLink, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle2, X, Globe, Mail, Phone, Link as LinkIcon, Search, AlignLeft, Copy, Maximize2, Minimize2, MousePointerClick } from 'lucide-react';
 import { toast } from 'sonner';
+import { VisualEmailEditor } from '@/components/visual-email-editor';
 
 // --- Link Parsing ---
 
@@ -722,6 +723,10 @@ export function StandaloneHtmlEditor({
       {/* Editor Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
+          <TabsTrigger value="visual" className="gap-1.5">
+            <MousePointerClick className="h-3.5 w-3.5" />
+            Visual Editor
+          </TabsTrigger>
           <TabsTrigger value="html" className="gap-1.5">
             <Code className="h-3.5 w-3.5" />
             HTML
@@ -740,6 +745,20 @@ export function StandaloneHtmlEditor({
             )}
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="visual" className="mt-3">
+          <VisualEmailEditor
+            html={activeTab === 'visual' && draftDirty.current ? draftHtml : html}
+            onUpdate={(updatedHtml) => {
+              pushUndo(html);
+              onChange(updatedHtml);
+              lastParentHtml.current = updatedHtml;
+              setDraftHtml(updatedHtml);
+              draftDirty.current = false;
+            }}
+            expanded={expanded}
+          />
+        </TabsContent>
 
         <TabsContent value="html" className="mt-3">
           {/* Editor toolbar */}
@@ -837,13 +856,16 @@ export function StandaloneHtmlEditor({
         </TabsContent>
 
         <TabsContent value="preview" className="mt-3">
-          <div className="border rounded-lg overflow-hidden bg-white">
+          <div
+            className="border rounded-lg overflow-hidden bg-white"
+            style={{ height: expanded ? '70vh' : '55vh', minHeight: 360, overscrollBehavior: 'contain' }}
+          >
             <iframe
               srcDoc={previewHtml}
               title="Email preview"
               sandbox="allow-same-origin"
-              className="w-full border-0"
-              style={{ height: expanded ? '700px' : '550px', pointerEvents: 'none' }}
+              scrolling="yes"
+              className="w-full h-full border-0"
             />
           </div>
         </TabsContent>
