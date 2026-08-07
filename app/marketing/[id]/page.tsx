@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
@@ -400,25 +400,9 @@ export default function CampaignDetailPage() {
   const [generatingAi, setGeneratingAi] = useState(false);
   const [linkClicks, setLinkClicks] = useState<any[]>([]);
   const [activeReportTab, setActiveReportTab] = useState('summary');
-  const [sendProgress, setSendProgress] = useState<{
-    totalSent: number;
-    totalFailed: number;
-    totalRecipients: number;
-    remaining: number;
-    errors: string[];
-    startedAt: number | null;
-    lastBatchAt: number | null;
-    status: 'idle' | 'sending' | 'complete' | 'error' | 'timeout' | 'quota_exhausted';
-  }>({
-    totalSent: 0,
-    totalFailed: 0,
-    totalRecipients: 0,
-    remaining: 0,
-    errors: [],
-    startedAt: null,
-    lastBatchAt: null,
-    status: 'idle',
-  });
+  const [job, setJob] = useState<any>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const editTemplateActionRef = useRef(false);
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [suppressionSummary, setSuppressionSummary] = useState<{
@@ -737,26 +721,19 @@ export default function CampaignDetailPage() {
 
   const handleRetryCampaign = async () => {
     try {
+      // Only re-queue rows that permanently failed. NEVER touch already-sent rows.
       const { error: resetRecipientsError } = await supabase
         .from('campaign_recipients')
-        .update({ sent: false, delivery_status: 'pending' })
+        .update({ sent: false, delivery_status: 'pending', attempts: 0, next_attempt_at: new Date().toISOString(), lease_expires_at: null })
         .eq('campaign_id', campaignId)
-        .eq('delivery_status', 'failed');
+        .in('delivery_status', ['failed']);
 
       if (resetRecipientsError) throw resetRecipientsError;
 
-      const { error: resetCampaignError } = await supabase
-        .from('marketing_campaigns')
-        .update({ status: 'draft', sent_at: null })
-        .eq('id', campaignId);
-
-      if (resetCampaignError) throw resetCampaignError;
-
-      toast.success('Campaign reset - ready to resend');
-      await loadCampaignData();
-      handleSendCampaign();
+      toast.success('Failed recipients re-queued');
+      await startSendJob();
     } catch (error: any) {
-      toast.error('Failed to reset campaign: ' + error.message);
+      toast.error('Failed to retry campaign: ' + error.message);
     }
   };
 
@@ -827,153 +804,98 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleSendCampaign = async () => {
-    setSendConfirmOpen(false);
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
-    const unsent = recipients.filter(r => !r.sent).length;
-    setSending(true);
-    setSendProgress({
-      totalSent: 0,
-      totalFailed: 0,
-      totalRecipients: unsent,
-      remaining: unsent,
-      errors: [],
-      startedAt: Date.now(),
-      lastBatchAt: Date.now(),
-      status: 'sending',
-    });
-
-    let totalSent = 0;
-    let totalFailed = 0;
-    let hasError = false;
-    const collectedErrors: string[] = [];
-
-    try {
-      const apiUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-marketing-campaign`;
-      const headers = {
-        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      };
-
-      let noProgressCount = 0;
-      const TIMEOUT_MS = 120000;
-
-      while (!hasError) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-        let response: Response;
-        try {
-          response = await fetch(apiUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ campaignId }),
-            signal: controller.signal,
-          });
-        } catch (fetchErr: any) {
-          clearTimeout(timeoutId);
-          if (fetchErr.name === 'AbortError') {
-            collectedErrors.push('Request timed out after 2 minutes. The server may be overloaded.');
-            setSendProgress(prev => ({ ...prev, status: 'timeout', errors: [...collectedErrors] }));
-          } else {
-            collectedErrors.push(`Network error: ${fetchErr.message}`);
-            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
-          }
-          hasError = true;
-          break;
-        }
-        clearTimeout(timeoutId);
-
-        let result: any;
-        try {
-          result = await response.json();
-        } catch {
-          collectedErrors.push(`Server returned invalid response (status ${response.status})`);
-          setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
-          hasError = true;
-          break;
-        }
-
-        if (!result.success) {
-          collectedErrors.push(result.error || 'Unknown error');
-          setSendProgress(prev => ({
-            ...prev,
-            status: 'error',
-            errors: [...collectedErrors],
-          }));
-          hasError = true;
-          break;
-        }
-
-        if (result.errors) {
-          collectedErrors.push(...result.errors);
-        }
-
-        totalSent += result.sentCount;
-        totalFailed += result.failedCount || 0;
-        const remaining = result.remaining || 0;
-
-        setSendProgress(prev => ({
-          ...prev,
-          totalSent,
-          totalFailed,
-          remaining,
-          lastBatchAt: Date.now(),
-          errors: [...collectedErrors],
-        }));
-
-        if (result.quotaExhausted) {
-          setSendProgress(prev => ({
-            ...prev,
-            totalSent,
-            totalFailed,
-            remaining,
-            status: 'quota_exhausted',
-            errors: [...collectedErrors],
-          }));
-          break;
-        }
-
-        if (result.sentCount === 0 && !result.complete) {
-          noProgressCount++;
-          if (noProgressCount >= 3) {
-            collectedErrors.push('Campaign sending stalled - emails are failing to send. Check your SMTP settings.');
-            setSendProgress(prev => ({ ...prev, status: 'error', errors: [...collectedErrors] }));
-            hasError = true;
-            break;
-          }
-        } else {
-          noProgressCount = 0;
-        }
-
-        if (result.complete) {
-          const actualSent = totalSent - totalFailed;
-          setSendProgress(prev => ({
-            ...prev,
-            totalSent,
-            totalFailed,
-            remaining: 0,
-            status: actualSent > 0 ? 'complete' : 'error',
-            errors: actualSent === 0 ? [...collectedErrors, 'No emails could be sent. Check your Resend settings.'] : [...collectedErrors],
-          }));
-          break;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
+  const fetchJob = useCallback(async () => {
+    const { data } = await supabase
+      .from('campaign_send_jobs')
+      .select('*')
+      .eq('campaign_id', campaignId)
+      .maybeSingle();
+    setJob(data);
+    if (data && (data.status === 'completed' || data.status === 'cancelled')) {
+      stopPolling();
       loadCampaignData();
+    }
+    return data;
+  }, [campaignId, stopPolling]);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(() => { fetchJob(); }, 4000);
+  }, [fetchJob]);
+
+  const startSendJob = async () => {
+    setBannerDismissed(false);
+    setSending(true);
+    try {
+      const { data, error } = await supabase.rpc('start_campaign_send', {
+        p_campaign_id: campaignId,
+        p_batch_size: 50,
+      });
+      if (error) throw error;
+      setJob(data);
+      toast.success('Sending continues in the background. You may close this page.');
+      startPolling();
+      await loadCampaignData();
     } catch (error: any) {
-      console.error('Failed to send campaign:', error);
-      setSendProgress(prev => ({
-        ...prev,
-        status: 'error',
-        errors: [...prev.errors, `Unexpected error: ${error.message}`],
-      }));
+      toast.error('Could not start sending: ' + error.message);
     } finally {
       setSending(false);
     }
   };
+
+  const handleSendCampaign = async () => {
+    setSendConfirmOpen(false);
+    await startSendJob();
+  };
+
+  const handlePauseSend = async () => {
+    try {
+      const { data, error } = await supabase.rpc('pause_campaign_send', { p_campaign_id: campaignId });
+      if (error) throw error;
+      setJob(data);
+      toast.success('Sending paused');
+    } catch (error: any) {
+      toast.error('Could not pause: ' + error.message);
+    }
+  };
+
+  const handleResumeSend = async () => {
+    await startSendJob();
+  };
+
+  const handleCancelSend = async () => {
+    try {
+      const { data, error } = await supabase.rpc('cancel_campaign_send', { p_campaign_id: campaignId });
+      if (error) throw error;
+      setJob(data);
+      stopPolling();
+      toast.success('Sending cancelled');
+      await loadCampaignData();
+    } catch (error: any) {
+      toast.error('Could not cancel: ' + error.message);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const j = await fetchJob();
+      if (active && j && j.status === 'running') {
+        startPolling();
+      }
+    })();
+    return () => {
+      active = false;
+      stopPolling();
+    };
+  }, [campaignId, fetchJob, startPolling, stopPolling]);
 
   const handleToggleReplied = async (recipientId: string, currentlyReplied: boolean) => {
     try {
@@ -1123,88 +1045,90 @@ export default function CampaignDetailPage() {
   const existingEmails = new Set(recipients.map(r => r.email.toLowerCase()));
   const filteredAvailable = availableRecipients.filter(r => !existingEmails.has(r.email.toLowerCase()));
 
-  const progressPercent = sendProgress.totalRecipients > 0
-    ? Math.round((sendProgress.totalSent / sendProgress.totalRecipients) * 100)
-    : 0;
+  const jobTotal = job?.total_recipients || 0;
+  const jobProcessed = job ? (job.sent_count + job.failed_count + job.suppressed_count + job.skipped_count) : 0;
+  const progressPercent = jobTotal > 0 ? Math.round((jobProcessed / jobTotal) * 100) : 0;
+  const jobActive = !!job && (job.status === 'running' || job.status === 'paused');
+  const showSendBanner = !!job && !bannerDismissed && (jobActive || job.status === 'completed' || job.status === 'cancelled');
+  const heartbeatText = job?.last_heartbeat_at
+    ? `${Math.max(0, Math.floor((Date.now() - new Date(job.last_heartbeat_at).getTime()) / 1000))}s ago`
+    : 'not yet';
 
-  const elapsedSeconds = sendProgress.startedAt
-    ? Math.floor((Date.now() - sendProgress.startedAt) / 1000)
-    : 0;
+  const bannerTone =
+    job?.status === 'completed' ? 'border-green-300 bg-green-50' :
+    job?.status === 'cancelled' ? 'border-slate-300 bg-slate-50' :
+    job?.status === 'paused' ? 'border-amber-300 bg-amber-50' :
+    'border-blue-300 bg-blue-50';
 
   return (
     <AppShell>
       <div className="p-8">
-        {sendProgress.status !== 'idle' && (
-          <div className={`mb-6 rounded-lg border-2 overflow-hidden ${
-            sendProgress.status === 'complete' ? 'border-green-300 bg-green-50' :
-            sendProgress.status === 'quota_exhausted' ? 'border-amber-300 bg-amber-50' :
-            sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'border-red-300 bg-red-50' :
-            'border-blue-300 bg-blue-50'
-          }`}>
+        {showSendBanner && (
+          <div className={`mb-6 rounded-lg border-2 overflow-hidden ${bannerTone}`}>
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  {sendProgress.status === 'sending' && (
+                  {job.status === 'running' && (
                     <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
                   )}
-                  {sendProgress.status === 'complete' && (
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                  )}
-                  {sendProgress.status === 'quota_exhausted' && (
-                    <AlertTriangle className="h-5 w-5 text-amber-600" />
-                  )}
-                  {(sendProgress.status === 'error' || sendProgress.status === 'timeout') && (
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
-                  )}
+                  {job.status === 'completed' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  {job.status === 'paused' && <AlertTriangle className="h-5 w-5 text-amber-600" />}
+                  {job.status === 'cancelled' && <Ban className="h-5 w-5 text-slate-600" />}
                   <span className={`font-semibold text-lg ${
-                    sendProgress.status === 'complete' ? 'text-green-800' :
-                    sendProgress.status === 'quota_exhausted' ? 'text-amber-800' :
-                    sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-800' :
+                    job.status === 'completed' ? 'text-green-800' :
+                    job.status === 'cancelled' ? 'text-slate-800' :
+                    job.status === 'paused' ? 'text-amber-800' :
                     'text-blue-800'
                   }`}>
-                    {sendProgress.status === 'sending' && 'Sending Campaign...'}
-                    {sendProgress.status === 'complete' && (sendProgress.totalFailed > 0 ? `Campaign Sent with ${sendProgress.totalFailed} Failures` : 'Campaign Sent Successfully')}
-                    {sendProgress.status === 'quota_exhausted' && 'Daily Sending Quota Reached'}
-                    {sendProgress.status === 'error' && 'Campaign Failed'}
-                    {sendProgress.status === 'timeout' && 'Request Timed Out'}
+                    {job.status === 'running' && 'Sending in the background...'}
+                    {job.status === 'paused' && 'Sending paused'}
+                    {job.status === 'completed' && (job.failed_count > 0 ? `Campaign sent (${job.failed_count} failed)` : 'Campaign sent successfully')}
+                    {job.status === 'cancelled' && 'Sending cancelled'}
                   </span>
                 </div>
-                {(sendProgress.status === 'complete' || sendProgress.status === 'error' || sendProgress.status === 'timeout' || sendProgress.status === 'quota_exhausted') && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSendProgress(prev => ({ ...prev, status: 'idle' }))}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {job.status === 'running' && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={handlePauseSend}>Pause</Button>
+                      <Button variant="outline" size="sm" onClick={handleCancelSend}>Cancel</Button>
+                    </>
+                  )}
+                  {job.status === 'paused' && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={handleResumeSend}>Resume</Button>
+                      <Button variant="outline" size="sm" onClick={handleCancelSend}>Cancel</Button>
+                    </>
+                  )}
+                  {(job.status === 'completed' || job.status === 'cancelled') && (
+                    <Button variant="ghost" size="sm" onClick={() => setBannerDismissed(true)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-4 text-sm mb-3">
-                <span className={
-                  sendProgress.status === 'complete' ? 'text-green-700' :
-                  sendProgress.status === 'quota_exhausted' ? 'text-amber-700' :
-                  sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'text-red-700' :
-                  'text-blue-700'
-                }>
-                  <span className="font-bold text-2xl">{sendProgress.totalSent}</span>
-                  <span className="mx-1">/</span>
-                  <span>{sendProgress.totalRecipients} processed</span>
-                </span>
-                {sendProgress.totalFailed > 0 && (
-                  <span className="text-red-600 font-medium">{sendProgress.totalFailed} failed</span>
-                )}
-                {sendProgress.remaining > 0 && sendProgress.status === 'sending' && (
-                  <span className="text-blue-600">{sendProgress.remaining} remaining</span>
-                )}
+              {job.status === 'running' && (
+                <p className="text-sm text-blue-700 mb-3">
+                  Sending continues on our servers. You may close this page — progress is saved automatically.
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-3">
+                <span className="text-slate-700"><span className="font-bold text-xl">{jobProcessed}</span> / {jobTotal} processed</span>
+                <span className="text-green-700 font-medium">{job.sent_count} sent</span>
+                {job.pending_count > 0 && <span className="text-slate-600">{job.pending_count} pending</span>}
+                {job.processing_count > 0 && <span className="text-blue-600">{job.processing_count} in progress</span>}
+                {job.retry_count > 0 && <span className="text-amber-600">{job.retry_count} retrying</span>}
+                {job.failed_count > 0 && <span className="text-red-600 font-medium">{job.failed_count} failed</span>}
+                {job.suppressed_count > 0 && <span className="text-slate-500">{job.suppressed_count} unsubscribed</span>}
               </div>
 
               <div className="w-full h-3 bg-white/60 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ease-out ${
-                    sendProgress.status === 'complete' ? 'bg-green-500' :
-                    sendProgress.status === 'quota_exhausted' ? 'bg-amber-500' :
-                    sendProgress.status === 'error' || sendProgress.status === 'timeout' ? 'bg-red-500' :
+                    job.status === 'completed' ? 'bg-green-500' :
+                    job.status === 'cancelled' ? 'bg-slate-400' :
+                    job.status === 'paused' ? 'bg-amber-500' :
                     'bg-blue-500'
                   }`}
                   style={{ width: `${progressPercent}%` }}
@@ -1212,40 +1136,17 @@ export default function CampaignDetailPage() {
               </div>
               <div className="flex justify-between mt-1.5">
                 <span className="text-xs text-slate-500">{progressPercent}%</span>
+                {jobActive && <span className="text-xs text-slate-500">Last activity: {heartbeatText}</span>}
               </div>
 
-              {sendProgress.errors.length > 0 && (
-                <div className="mt-4 p-3 bg-white/80 rounded-md border border-red-200">
-                  <div className="text-sm font-medium text-red-800 mb-1">Errors ({sendProgress.errors.length})</div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {sendProgress.errors.map((err, i) => (
-                      <div key={i} className="text-xs text-red-600 flex items-start gap-1.5">
-                        <span className="mt-0.5 shrink-0">-</span>
-                        <span>{err}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {sendProgress.status === 'timeout' && (
-                <div className="mt-3 text-sm text-red-700">
-                  You can press Resume Sending to continue where it left off. Already-sent emails will not be re-sent.
-                </div>
-              )}
-              {sendProgress.status === 'error' && sendProgress.totalSent > 0 && (
-                <div className="mt-3 text-sm text-red-700">
-                  {sendProgress.totalSent - sendProgress.totalFailed} emails were sent before the error. You can retry to send the remaining {sendProgress.remaining}.
-                </div>
-              )}
-              {sendProgress.status === 'complete' && sendProgress.totalFailed > 0 && (
+              {job.throttled && job.status === 'running' && (
                 <div className="mt-3 text-sm text-amber-700">
-                  Campaign completed with {sendProgress.totalFailed} failed deliveries. Check the errors above for details.
+                  Your email provider is rate-limiting sends. Sending will slow down and resume automatically — no action needed.
                 </div>
               )}
-              {sendProgress.status === 'quota_exhausted' && (
+              {job.status === 'paused' && (
                 <div className="mt-3 text-sm text-amber-700">
-                  Your Resend daily sending quota has been reached. {sendProgress.totalSent - sendProgress.totalFailed} emails were sent successfully. The remaining {sendProgress.remaining} emails can be sent once your quota resets (usually next day). Use the "Resume Sending" button to continue.
+                  {job.last_error ? job.last_error + ' ' : ''}Press Resume to continue where it left off. Already-sent emails are never re-sent.
                 </div>
               )}
             </div>
@@ -1280,16 +1181,16 @@ export default function CampaignDetailPage() {
                 )}
               </div>
             </div>
-            {campaign.status === 'draft' && recipients.length > 0 && (
+            {campaign.status === 'draft' && recipients.length > 0 && !jobActive && (
               <Button onClick={prepareSendConfirmation} disabled={sending}>
                 <Send className="mr-2 h-4 w-4" />
-                {sending ? 'Sending...' : 'Send Campaign'}
+                {sending ? 'Starting...' : 'Send Campaign'}
               </Button>
             )}
-            {campaign.status === 'sending' && (
-              <Button onClick={handleSendCampaign} disabled={sending}>
+            {campaign.status === 'sending' && !jobActive && (
+              <Button onClick={startSendJob} disabled={sending}>
                 <Send className="mr-2 h-4 w-4" />
-                {sending ? 'Sending...' : 'Resume Sending'}
+                {sending ? 'Starting...' : 'Resume Sending'}
               </Button>
             )}
             {campaign.status === 'failed' && (
