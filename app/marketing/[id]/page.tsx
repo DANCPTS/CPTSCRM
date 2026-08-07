@@ -70,23 +70,32 @@ function StatCard({ label, value, percentage, icon: Icon, color, subLabel }: {
   );
 }
 
-function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }: {
+function CampaignStatsCard({ campaign, recipients, linkClicks, progress, onToggleReplied }: {
   campaign: any;
   recipients: any[];
   linkClicks: any[];
+  progress: any;
   onToggleReplied: (recipientId: string, currentlyReplied: boolean) => void;
 }) {
-  const totalProcessed = recipients.filter(r => r.sent).length;
-  const failedDeliveryCount = recipients.filter(r => r.delivery_status === 'failed').length;
-  const skippedCount = recipients.filter(r => r.delivery_status === 'skipped_unsubscribed').length;
-  const sentCount = totalProcessed - failedDeliveryCount - skippedCount;
-  const openedCount = recipients.filter(r => r.opened_at).length;
-  const clickedCount = recipients.filter(r => r.clicked_at).length;
-  const repliedCount = recipients.filter(r => r.replied_at).length;
-  const unsubscribedCount = recipients.filter(r => r.unsubscribed_at).length;
-  const bouncedHardCount = recipients.filter(r => r.bounce_type === 'hard').length;
-  const bouncedSoftCount = recipients.filter(r => r.bounce_type === 'soft').length;
-  const spamCount = recipients.filter(r => r.spam_reported_at).length;
+  // Prefer the single authoritative snapshot (get_campaign_progress) so this
+  // report always matches the background-send banner. Fall back to the
+  // in-memory recipient rows only when the snapshot has not loaded yet.
+  const snap = progress;
+  const totalRecipients = snap ? Number(snap.total) : recipients.length;
+  const sentCount = snap ? Number(snap.sent) : recipients.filter(r => r.sent).length;
+  const failedDeliveryCount = snap
+    ? (Number(snap.failed) + Number(snap.invalid))
+    : recipients.filter(r => r.delivery_status === 'failed').length;
+  const skippedCount = snap
+    ? (Number(snap.suppressed) + Number(snap.skipped) + Number(snap.cancelled))
+    : recipients.filter(r => ['suppressed', 'skipped', 'skipped_unsubscribed'].includes(r.delivery_status)).length;
+  const openedCount = snap ? Number(snap.opened) : recipients.filter(r => r.opened_at).length;
+  const clickedCount = snap ? Number(snap.clicked) : recipients.filter(r => r.clicked_at).length;
+  const repliedCount = snap ? Number(snap.replied) : recipients.filter(r => r.replied_at).length;
+  const unsubscribedCount = snap ? Number(snap.unsubscribed) : recipients.filter(r => r.unsubscribed_at).length;
+  const bouncedHardCount = snap ? Number(snap.bounced_hard) : recipients.filter(r => r.bounce_type === 'hard').length;
+  const bouncedSoftCount = snap ? Number(snap.bounced_soft) : recipients.filter(r => r.bounce_type === 'soft').length;
+  const spamCount = snap ? Number(snap.spam) : recipients.filter(r => r.spam_reported_at).length;
 
   const openRate = sentCount > 0 ? (openedCount / sentCount) * 100 : 0;
   const clickRate = sentCount > 0 ? (clickedCount / sentCount) * 100 : 0;
@@ -153,7 +162,7 @@ function CampaignStatsCard({ campaign, recipients, linkClicks, onToggleReplied }
               {!failedDeliveryCount && !skippedCount && (
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl p-6 text-center md:col-span-2">
                   <div className="text-sm font-medium text-slate-500 mb-2">Total Recipients</div>
-                  <div className="text-5xl font-bold text-slate-900">{recipients.length}</div>
+                  <div className="text-5xl font-bold text-slate-900">{totalRecipients}</div>
                 </div>
               )}
             </div>
@@ -401,8 +410,12 @@ export default function CampaignDetailPage() {
   const [linkClicks, setLinkClicks] = useState<any[]>([]);
   const [activeReportTab, setActiveReportTab] = useState('summary');
   const [job, setJob] = useState<any>(null);
+  const [progress, setProgress] = useState<any>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressVersionRef = useRef<number>(0);
+  const maxSentRef = useRef<number>(0);
+  const progressInFlightRef = useRef<boolean>(false);
   const editTemplateActionRef = useRef(false);
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [suppressionSummary, setSuppressionSummary] = useState<{
@@ -811,6 +824,29 @@ export default function CampaignDetailPage() {
     }
   }, []);
 
+  const fetchProgress = useCallback(async () => {
+    if (progressInFlightRef.current) return;
+    progressInFlightRef.current = true;
+    try {
+      const { data, error } = await supabase.rpc('get_campaign_progress', {
+        p_campaign_id: campaignId,
+      });
+      if (error) throw error;
+      const snap = Array.isArray(data) ? data[0] : data;
+      if (!snap) return;
+      const version = Number(snap.version) || 0;
+      if (version <= progressVersionRef.current) return;
+      progressVersionRef.current = version;
+      const displaySent = Math.max(Number(snap.sent) || 0, maxSentRef.current);
+      maxSentRef.current = displaySent;
+      setProgress({ ...snap, sent: displaySent });
+    } catch {
+      // transient RPC/network errors: keep the last good snapshot on screen
+    } finally {
+      progressInFlightRef.current = false;
+    }
+  }, [campaignId]);
+
   const fetchJob = useCallback(async () => {
     const { data } = await supabase
       .from('campaign_send_jobs')
@@ -827,8 +863,8 @@ export default function CampaignDetailPage() {
 
   const startPolling = useCallback(() => {
     if (pollRef.current) return;
-    pollRef.current = setInterval(() => { fetchJob(); }, 4000);
-  }, [fetchJob]);
+    pollRef.current = setInterval(() => { fetchJob(); fetchProgress(); }, 4000);
+  }, [fetchJob, fetchProgress]);
 
   const startSendJob = async () => {
     setBannerDismissed(false);
@@ -842,6 +878,7 @@ export default function CampaignDetailPage() {
       setJob(data);
       toast.success('Sending continues in the background. You may close this page.');
       startPolling();
+      await fetchProgress();
       await loadCampaignData();
     } catch (error: any) {
       toast.error('Could not start sending: ' + error.message);
@@ -860,6 +897,7 @@ export default function CampaignDetailPage() {
       const { data, error } = await supabase.rpc('pause_campaign_send', { p_campaign_id: campaignId });
       if (error) throw error;
       setJob(data);
+      await fetchProgress();
       toast.success('Sending paused');
     } catch (error: any) {
       toast.error('Could not pause: ' + error.message);
@@ -876,6 +914,7 @@ export default function CampaignDetailPage() {
       if (error) throw error;
       setJob(data);
       stopPolling();
+      await fetchProgress();
       toast.success('Sending cancelled');
       await loadCampaignData();
     } catch (error: any) {
@@ -885,7 +924,10 @@ export default function CampaignDetailPage() {
 
   useEffect(() => {
     let active = true;
+    progressVersionRef.current = 0;
+    maxSentRef.current = 0;
     (async () => {
+      await fetchProgress();
       const j = await fetchJob();
       if (active && j && j.status === 'running') {
         startPolling();
@@ -895,7 +937,7 @@ export default function CampaignDetailPage() {
       active = false;
       stopPolling();
     };
-  }, [campaignId, fetchJob, startPolling, stopPolling]);
+  }, [campaignId, fetchJob, fetchProgress, startPolling, stopPolling]);
 
   const handleToggleReplied = async (recipientId: string, currentlyReplied: boolean) => {
     try {
@@ -1045,19 +1087,34 @@ export default function CampaignDetailPage() {
   const existingEmails = new Set(recipients.map(r => r.email.toLowerCase()));
   const filteredAvailable = availableRecipients.filter(r => !existingEmails.has(r.email.toLowerCase()));
 
-  const jobTotal = job?.total_recipients || 0;
-  const jobProcessed = job ? (job.sent_count + job.failed_count + job.suppressed_count + job.skipped_count) : 0;
+  // Single authoritative snapshot (get_campaign_progress) drives BOTH the
+  // background-send banner and the Campaign Report so they can never disagree.
+  const snap = progress;
+  const jobStatus: string | null = snap?.job_status || job?.status || null;
+  const jobTotal = snap ? Number(snap.total) : (job?.total_recipients || 0);
+  const sentDisplay = snap ? Number(snap.sent) : (job?.sent_count || 0);
+  const pendingDisplay = snap ? Number(snap.pending) : (job?.pending_count || 0);
+  const processingDisplay = snap ? Number(snap.processing) : (job?.processing_count || 0);
+  const retryingDisplay = snap ? Number(snap.retrying) : (job?.retry_count || 0);
+  const failedDisplay = snap ? (Number(snap.failed) + Number(snap.invalid)) : (job?.failed_count || 0);
+  const suppressedDisplay = snap
+    ? (Number(snap.suppressed) + Number(snap.skipped) + Number(snap.cancelled))
+    : ((job?.suppressed_count || 0) + (job?.skipped_count || 0));
+  const jobProcessed = snap
+    ? (Number(snap.total) - Number(snap.pending) - Number(snap.processing) - Number(snap.retrying))
+    : (job ? (job.sent_count + job.failed_count + job.suppressed_count + job.skipped_count) : 0);
   const progressPercent = jobTotal > 0 ? Math.round((jobProcessed / jobTotal) * 100) : 0;
-  const jobActive = !!job && (job.status === 'running' || job.status === 'paused');
-  const showSendBanner = !!job && !bannerDismissed && (jobActive || job.status === 'completed' || job.status === 'cancelled');
-  const heartbeatText = job?.last_heartbeat_at
-    ? `${Math.max(0, Math.floor((Date.now() - new Date(job.last_heartbeat_at).getTime()) / 1000))}s ago`
+  const jobActive = jobStatus === 'running' || jobStatus === 'paused';
+  const showSendBanner = !!job && !bannerDismissed && (jobActive || jobStatus === 'completed' || jobStatus === 'cancelled');
+  const heartbeatSource = snap?.last_activity_at || job?.last_heartbeat_at;
+  const heartbeatText = heartbeatSource
+    ? `${Math.max(0, Math.floor((Date.now() - new Date(heartbeatSource).getTime()) / 1000))}s ago`
     : 'not yet';
 
   const bannerTone =
-    job?.status === 'completed' ? 'border-green-300 bg-green-50' :
-    job?.status === 'cancelled' ? 'border-slate-300 bg-slate-50' :
-    job?.status === 'paused' ? 'border-amber-300 bg-amber-50' :
+    jobStatus === 'completed' ? 'border-green-300 bg-green-50' :
+    jobStatus === 'cancelled' ? 'border-slate-300 bg-slate-50' :
+    jobStatus === 'paused' ? 'border-amber-300 bg-amber-50' :
     'border-blue-300 bg-blue-50';
 
   return (
@@ -1068,38 +1125,38 @@ export default function CampaignDetailPage() {
             <div className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  {job.status === 'running' && (
+                  {jobStatus === 'running' && (
                     <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
                   )}
-                  {job.status === 'completed' && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  {job.status === 'paused' && <AlertTriangle className="h-5 w-5 text-amber-600" />}
-                  {job.status === 'cancelled' && <Ban className="h-5 w-5 text-slate-600" />}
+                  {jobStatus === 'completed' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  {jobStatus === 'paused' && <AlertTriangle className="h-5 w-5 text-amber-600" />}
+                  {jobStatus === 'cancelled' && <Ban className="h-5 w-5 text-slate-600" />}
                   <span className={`font-semibold text-lg ${
-                    job.status === 'completed' ? 'text-green-800' :
-                    job.status === 'cancelled' ? 'text-slate-800' :
-                    job.status === 'paused' ? 'text-amber-800' :
+                    jobStatus === 'completed' ? 'text-green-800' :
+                    jobStatus === 'cancelled' ? 'text-slate-800' :
+                    jobStatus === 'paused' ? 'text-amber-800' :
                     'text-blue-800'
                   }`}>
-                    {job.status === 'running' && 'Sending in the background...'}
-                    {job.status === 'paused' && 'Sending paused'}
-                    {job.status === 'completed' && (job.failed_count > 0 ? `Campaign sent (${job.failed_count} failed)` : 'Campaign sent successfully')}
-                    {job.status === 'cancelled' && 'Sending cancelled'}
+                    {jobStatus === 'running' && 'Sending in the background...'}
+                    {jobStatus === 'paused' && 'Sending paused'}
+                    {jobStatus === 'completed' && (failedDisplay > 0 ? `Campaign sent (${failedDisplay} failed)` : 'Campaign sent successfully')}
+                    {jobStatus === 'cancelled' && 'Sending cancelled'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {job.status === 'running' && (
+                  {jobStatus === 'running' && (
                     <>
                       <Button variant="outline" size="sm" onClick={handlePauseSend}>Pause</Button>
                       <Button variant="outline" size="sm" onClick={handleCancelSend}>Cancel</Button>
                     </>
                   )}
-                  {job.status === 'paused' && (
+                  {jobStatus === 'paused' && (
                     <>
                       <Button variant="outline" size="sm" onClick={handleResumeSend}>Resume</Button>
                       <Button variant="outline" size="sm" onClick={handleCancelSend}>Cancel</Button>
                     </>
                   )}
-                  {(job.status === 'completed' || job.status === 'cancelled') && (
+                  {(jobStatus === 'completed' || jobStatus === 'cancelled') && (
                     <Button variant="ghost" size="sm" onClick={() => setBannerDismissed(true)}>
                       <X className="h-4 w-4" />
                     </Button>
@@ -1107,7 +1164,7 @@ export default function CampaignDetailPage() {
                 </div>
               </div>
 
-              {job.status === 'running' && (
+              {jobStatus === 'running' && (
                 <p className="text-sm text-blue-700 mb-3">
                   Sending continues on our servers. You may close this page — progress is saved automatically.
                 </p>
@@ -1115,20 +1172,20 @@ export default function CampaignDetailPage() {
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mb-3">
                 <span className="text-slate-700"><span className="font-bold text-xl">{jobProcessed}</span> / {jobTotal} processed</span>
-                <span className="text-green-700 font-medium">{job.sent_count} sent</span>
-                {job.pending_count > 0 && <span className="text-slate-600">{job.pending_count} pending</span>}
-                {job.processing_count > 0 && <span className="text-blue-600">{job.processing_count} in progress</span>}
-                {job.retry_count > 0 && <span className="text-amber-600">{job.retry_count} retrying</span>}
-                {job.failed_count > 0 && <span className="text-red-600 font-medium">{job.failed_count} failed</span>}
-                {job.suppressed_count > 0 && <span className="text-slate-500">{job.suppressed_count} unsubscribed</span>}
+                <span className="text-green-700 font-medium">{sentDisplay} sent</span>
+                {pendingDisplay > 0 && <span className="text-slate-600">{pendingDisplay} pending</span>}
+                {processingDisplay > 0 && <span className="text-blue-600">{processingDisplay} in progress</span>}
+                {retryingDisplay > 0 && <span className="text-amber-600">{retryingDisplay} retrying</span>}
+                {failedDisplay > 0 && <span className="text-red-600 font-medium">{failedDisplay} failed</span>}
+                {suppressedDisplay > 0 && <span className="text-slate-500">{suppressedDisplay} unsubscribed</span>}
               </div>
 
               <div className="w-full h-3 bg-white/60 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ease-out ${
-                    job.status === 'completed' ? 'bg-green-500' :
-                    job.status === 'cancelled' ? 'bg-slate-400' :
-                    job.status === 'paused' ? 'bg-amber-500' :
+                    jobStatus === 'completed' ? 'bg-green-500' :
+                    jobStatus === 'cancelled' ? 'bg-slate-400' :
+                    jobStatus === 'paused' ? 'bg-amber-500' :
                     'bg-blue-500'
                   }`}
                   style={{ width: `${progressPercent}%` }}
@@ -1139,12 +1196,12 @@ export default function CampaignDetailPage() {
                 {jobActive && <span className="text-xs text-slate-500">Last activity: {heartbeatText}</span>}
               </div>
 
-              {job.throttled && job.status === 'running' && (
+              {snap?.throttled && jobStatus === 'running' && (
                 <div className="mt-3 text-sm text-amber-700">
                   Your email provider is rate-limiting sends. Sending will slow down and resume automatically — no action needed.
                 </div>
               )}
-              {job.status === 'paused' && (
+              {jobStatus === 'paused' && (
                 <div className="mt-3 text-sm text-amber-700">
                   {job.last_error ? job.last_error + ' ' : ''}Press Resume to continue where it left off. Already-sent emails are never re-sent.
                 </div>
@@ -1258,6 +1315,7 @@ export default function CampaignDetailPage() {
             campaign={campaign}
             recipients={recipients}
             linkClicks={linkClicks}
+            progress={progress}
             onToggleReplied={handleToggleReplied}
           />
         </div>
